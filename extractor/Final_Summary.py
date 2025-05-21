@@ -15,9 +15,10 @@ client = OpenAI(
 )
 
 # Step 1: Read item-price data from BeautifulSoup_Content.json
-with open('BeautifulSoup_Content.json', 'r', encoding='utf-8') as f:
+BASE_DIR = os.path.dirname(__file__)
+data_path = os.path.join(BASE_DIR, 'BeautifulSoup_Content.json')
+with open(data_path, 'r', encoding='utf-8') as f:
     content_data = json.load(f)
-
 # Prepare lists to store GPT responses and extracted price information
 responses = []
 price_info = []

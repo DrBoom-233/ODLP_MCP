@@ -68,8 +68,7 @@ async def run_script(
     script: Tuple[str, str, bool],
     mhtml: str | None = None,
     *,
-    ctx: "mcp.server.fastmcp.Context | None" = None,
-) -> bool:
+    ctx: "mcp.server.fastmcp.Context | None" = None,) -> bool:
     exe, rel_path, need_file = script
     cmd = [exe, str(SCRIPT_DIR / rel_path)]
 

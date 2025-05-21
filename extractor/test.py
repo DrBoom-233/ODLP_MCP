@@ -7,7 +7,7 @@ from pathlib import Path
 from extractor.pipeline import MAIN_SCRIPTS
 
 def main():
-    project_root = Path(__file__).parent.resolve()
+    project_root = Path(__file__).parent.parent.resolve()
     python_exe = sys.executable
 
     # 确保 cwd 在项目根，以便 Python 把 project_root 当作顶级包目录
@@ -17,7 +17,7 @@ def main():
         # 构造基础命令
         cmd = [python_exe, "-m", module_name]
 
-        # 如果脚本需要 mhtml 文件，就给它一个 dummy（或者改成你真实的文件路径）
+        # # 如果脚本需要 mhtml 文件，就给它一个 dummy（或者改成你真实的文件路径）
         if need_file:
             dummy = project_root / "mhtml_output" / "dummy.mhtml"
             dummy.parent.mkdir(exist_ok=True)
