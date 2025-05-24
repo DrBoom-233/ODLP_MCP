@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import json
 import subprocess
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -72,25 +73,125 @@ async def run_script(
     exe, rel_path, need_file = script
     cmd = [exe, str(SCRIPT_DIR / rel_path)]
 
+    script_full_path = SCRIPT_DIR / rel_path
+    if not script_full_path.exists():
+        error_msg = f"脚本文件不存在: {script_full_path}"
+        if ctx:
+            ctx.error(error_msg)
+        else:
+            print(error_msg, file=sys.stderr)
+        return False
+
+    # 打印当前工作目录和脚本所在目录
+    cwd_msg = f"当前工作目录: {Path().absolute()}"
+    script_dir_msg = f"脚本所在目录: {SCRIPT_DIR.absolute()}"
+    if ctx:
+        ctx.info(cwd_msg)
+        ctx.info(script_dir_msg)
+    else:
+        print(cwd_msg, file=sys.stderr)
+        print(script_dir_msg, file=sys.stderr)
+
     # 如果需要文件参数，就拼出 mhtml 的全路径
     if need_file and mhtml:
         file_path = Path(mhtml)
         if not file_path.is_absolute():
             file_path = MHTML_DIR / file_path
         file_path = file_path.resolve()
+        if not file_path.exists():
+            error_msg = f"目标文件不存在: {file_path}"
+            if ctx:
+                ctx.error(error_msg)
+            else:
+                print(error_msg, file=sys.stderr)
+            return False
+            
         if ctx:
             ctx.info(f"▶ Using MHTML file: {file_path}")
         cmd.append(str(file_path))
 
+    # 添加环境变量
+    env = os.environ.copy()
+    
+    # 确保 PYTHONPATH 包含当前目录和项目根目录
+    python_path = env.get('PYTHONPATH', '')
+    if python_path:
+        env['PYTHONPATH'] = f"{ROOT_DIR}{os.pathsep}{python_path}"
+    else:
+        env['PYTHONPATH'] = str(ROOT_DIR)
+    
+    # 打印命令和环境变量
     if ctx:
         ctx.info(f"▶ Running command: {' '.join(cmd)}")
-    out, err = await run_sub(cmd)
-
-    if out and ctx:
-        ctx.info(out[:300])
-    if err:
-        raise RuntimeError(err[:500])
-    return True
+        ctx.info(f"▶ PYTHONPATH: {env['PYTHONPATH']}")
+    else:
+        print(f"▶ Running command: {' '.join(cmd)}", file=sys.stderr)
+        print(f"▶ PYTHONPATH: {env['PYTHONPATH']}", file=sys.stderr)
+    
+    try:
+        # 使用带环境变量的异步子进程
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
+            env=env,
+            cwd=str(ROOT_DIR)  # 显式设置工作目录为项目根目录
+        )
+        
+        # 添加超时
+        try:
+            out, err = await asyncio.wait_for(proc.communicate(), timeout=60.0)
+            out_str = out.decode(errors="replace")
+            err_str = err.decode(errors="replace")
+            
+            # 打印输出
+            if out_str:
+                out_msg = f"脚本输出: {out_str[:500]}"
+                if ctx:
+                    ctx.info(out_msg)
+                else:
+                    print(out_msg, file=sys.stderr)
+                    
+            # 检查错误
+            if err_str:
+                err_msg = f"脚本错误: {err_str[:500]}"
+                if ctx:
+                    ctx.error(err_msg)
+                else:
+                    print(err_msg, file=sys.stderr)
+                if proc.returncode != 0:
+                    return False
+                    
+            return proc.returncode == 0
+            
+        except asyncio.TimeoutError:
+            error_msg = f"脚本执行超时: {rel_path}"
+            if ctx:
+                ctx.error(error_msg)
+            else:
+                print(error_msg, file=sys.stderr)
+                
+            # 尝试终止进程
+            try:
+                proc.terminate()
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except:
+                proc.kill()
+            return False
+            
+    except Exception as e:
+        error_msg = f"执行脚本时发生异常: {e}"
+        if ctx:
+            ctx.error(error_msg)
+        else:
+            print(error_msg, file=sys.stderr)
+        import traceback
+        trace_msg = traceback.format_exc()
+        if ctx:
+            ctx.error(trace_msg)
+        else:
+            print(trace_msg, file=sys.stderr)
+        return False
 
 # ────────────────────────────────────────────────
 # 脚本清单

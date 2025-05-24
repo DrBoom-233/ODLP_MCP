@@ -10,6 +10,9 @@ from DrissionPage import Chromium, ChromiumOptions  # type: ignore
 from playwright.async_api import async_playwright, Browser, Page  # type: ignore
 from dotenv import load_dotenv
 import asyncio
+import os
+import config
+from extractor import ocr  # 导入OCR模块
 
 def debug(msg: str):
     # 所有调试信息都打印到 stderr，避免干扰 stdio JSON-RPC 流
@@ -206,20 +209,36 @@ async def screenshot_tool(
 # Tool 3: OCR 转换 (image_transform)
 # -----------------------------------
 @mcp.tool()
-async def ocr_tool(
-    *,
-    ctx: Context
+async def ocr_name_tool(
+        *,
+        ctx: Context
 ) -> dict:
-    debug("--> ocr_tool called")
-    await ctx.info("🔢 Running OCR tool")
-    # 先尝试新版脚本
-    try:
-        await ctx.info("Running image_transform_2.py")
-        ok = await run_script(("python", "image_transform_2.py", False), None, ctx=ctx)
-    except Exception:
-        # 回退旧版脚本
-        ok = await run_script(("python", "image_transform.py", False), None, ctx=ctx)
-    return {"ocr_ok": ok}
+    """
+    OCR工具1：从截图中提取商品名称信息
+    """
+    debug("--> ocr_name_tool called")
+    await ctx.info("🔢 Running OCR for Item Names")
+    
+    success = await ocr.process_ocr_name(ctx)
+    
+    await ctx.info(f"商品名称OCR工具执行结果: {'成功' if success else '失败'}")
+    return {"success": success}
+
+@mcp.tool()
+async def ocr_price_tool(
+        *,
+        ctx: Context
+) -> dict:
+    """
+    OCR工具2：从截图中提取价格信息
+    """
+    debug("--> ocr_price_tool called")
+    await ctx.info("💲 Running OCR for Item Prices")
+    
+    success = await ocr.process_ocr_price(ctx)
+    
+    await ctx.info(f"商品价格OCR工具执行结果: {'成功' if success else '失败'}")
+    return {"success": success}
 
 # -----------------------------------
 # Tool 4: 标签定位 (Tag Locating)
