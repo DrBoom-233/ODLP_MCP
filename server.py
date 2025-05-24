@@ -1,11 +1,13 @@
 # server.py  ——  FastMCP server 入口
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from pathlib import Path
 from mcp.server.fastmcp import FastMCP, Context
 import sys
 from extractor.pipeline import run_script, SCRIPT_DIR
 from extractor.DrissionPage_Downloader import OUTPUT_DIR, CONFIG, generate_mhtml_filename
 from DrissionPage import Chromium, ChromiumOptions  # type: ignore
+from playwright.async_api import async_playwright, Browser, Page  # type: ignore
 from dotenv import load_dotenv
 import asyncio
 
@@ -20,6 +22,8 @@ debug("== InfoExtractor server starting ==")
 
 # 全局浏览器变量
 BROWSER: Chromium | None = None
+PLAYWRIGHT_BROWSER: Browser | None = None
+PLAYWRIGHT = None
 
 def get_browser() -> Chromium:
     """
@@ -34,6 +38,19 @@ def get_browser() -> Chromium:
         debug(">> Chromium browser launched")
     return BROWSER
 
+async def get_playwright_browser() -> Browser:
+    """
+    初始化并返回全局 Playwright Browser 实例。
+    """
+    global PLAYWRIGHT_BROWSER, PLAYWRIGHT
+    if PLAYWRIGHT_BROWSER is None:
+        PLAYWRIGHT = await async_playwright().start()
+        PLAYWRIGHT_BROWSER = await PLAYWRIGHT.chromium.launch(
+            headless=True,
+        )
+        debug(">> Playwright browser launched")
+    return PLAYWRIGHT_BROWSER
+
 def quit_browser():
     """
     关闭全局浏览器实例。
@@ -44,15 +61,30 @@ def quit_browser():
         BROWSER.quit()
         BROWSER = None
 
+async def quit_playwright_browser():
+    """
+    关闭全局 Playwright 浏览器实例。
+    """
+    global PLAYWRIGHT_BROWSER, PLAYWRIGHT
+    if PLAYWRIGHT_BROWSER is not None:
+        debug(">> Quitting Playwright browser")
+        await PLAYWRIGHT_BROWSER.close()
+        PLAYWRIGHT_BROWSER = None
+    if PLAYWRIGHT is not None:
+        await PLAYWRIGHT.stop()
+        PLAYWRIGHT = None
+
 @asynccontextmanager
 async def lifespan(app: FastMCP) -> AsyncIterator[dict]:
     # 启动时初始化所有依赖环境
     debug(">> lifespan: initializing resources")
-    # get_browser()
+    get_browser()
+    await get_playwright_browser()
     yield {}
     debug(">> lifespan: cleaning up resources")
     quit_browser()
-    debug(">> Chromium browser quit")
+    await quit_playwright_browser()
+    debug(">> All browsers quit")
 
 mcp = FastMCP(
     "InfoExtractor",
@@ -112,41 +144,61 @@ async def screenshot_tool(
 ) -> dict:
     await ctx.info("📸 Running screenshot tool on all .mhtml files")
 
+    # 确保public目录存在
+    public_dir = Path("public")
+    public_dir.mkdir(exist_ok=True)
+
     results: dict[str, bool] = {}
     mhtml_files = list(OUTPUT_DIR.glob("*.mhtml"))
     if not mhtml_files:
         await ctx.info("⚠️ No .mhtml files found")
         return {"screenshots": results}
 
+    browser = await get_playwright_browser()
+    
     for path in mhtml_files:
-        await ctx.info(f"📸 Processing {path.name}")
-        script = SCRIPT_DIR / "screenshot.py"
-        cmd = [
-            sys.executable,
-            str(script),
-            str(path.resolve())
-        ]
-        await ctx.info(f"▶ Running: {' '.join(cmd)}")
-
-        # 异步启动子进程
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        out_bytes, err_bytes = await proc.communicate()
-        out, err = out_bytes.decode(), err_bytes.decode()
-
-        if out:
-            # 只截前 500 字，避免太长
-            await ctx.info(out[:500].strip())
-        if err:
-            await ctx.error(err[:500].strip())
-
-        success = (proc.returncode == 0)
+        try:
+            await ctx.info(f"📸 Processing {path.name}")
+            
+            # 创建新页面
+            page = await browser.new_page()
+            try:
+                # 加载本地mhtml文件
+                await page.goto(f"file://{path.resolve()}")
+                
+                # 等待页面加载完成
+                await page.wait_for_load_state("networkidle")
+                
+                # 获取页面尺寸并设置视口
+                viewport_size = await page.evaluate("""() => {
+                    return {
+                        width: Math.max(document.documentElement.clientWidth, window.innerWidth || 0),
+                        height: Math.max(document.documentElement.clientHeight, window.innerHeight || 0)
+                    }
+                }""")
+                
+                await page.set_viewport_size(viewport_size)
+                
+                # 截图保存到public目录
+                screenshot_path = public_dir / path.with_suffix(".png").name
+                await page.screenshot(path=str(screenshot_path), full_page=True)
+                
+                await ctx.info(f"✅ Screenshot saved to {screenshot_path}")
+                success = True
+                
+            except Exception as e:
+                await ctx.error(f"Screenshot failed for {path.name}: {str(e)}")
+                success = False
+            finally:
+                await page.close()
+                
+        except Exception as e:
+            await ctx.error(f"Unexpected error processing {path.name}: {str(e)}")
+            success = False
+            
         results[path.name] = success
+        await ctx.info(f"{'✅' if success else '❌'} Finished {path.name}")
 
-    await ctx.call_tool("ping_tool", {})
     await ctx.info("✅ All screenshots done")
     return {"screenshots": results}
 
