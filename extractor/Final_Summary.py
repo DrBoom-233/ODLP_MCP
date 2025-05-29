@@ -14,78 +14,6 @@ client = OpenAI(
     # base_url=config.URL
 )
 
-# Step 1: Read item-price data from BeautifulSoup_Content.json
-BASE_DIR = os.path.dirname(__file__)
-data_path = os.path.join(BASE_DIR, 'BeautifulSoup_Content.json')
-with open(data_path, 'r', encoding='utf-8') as f:
-    content_data = json.load(f)
-# Prepare lists to store GPT responses and extracted price information
-responses = []
-price_info = []
-
-# Process each item in content_data sorted by the 'Order' field
-for item in sorted(content_data, key=lambda x: x['Order']):
-    content_text = item['Content']
-
-    # Use OpenAI API to analyze and extract text
-    response = client.chat.completions.create(
-        model=config.MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": "You are an information extraction assistant. You are assisting with CPI calculation."
-            },
-            {"role": "user", "content": content_text},
-            {
-                "role": "system",
-                "content": (
-                    "You are receiving text from a JSON file that contains the names of items, their corresponding price information, "
-                    "and a data-product-code extracted from the HTML content. Some items may have multiple prices, each with a different unit of measure. "
-                    "Please extract all the price information and the data-product-code for each item. "
-                    "The output should be in JSON format with each object containing the fields \"item\", \"data_product_code\", and \"prices\", "
-                    "where \"prices\" is an array of objects, each containing \"price\" and \"unit\" fields. "
-                    "For example: {\"item\": \"cucumber\", \"data_product_code\": \"ABC123\", \"prices\": [{\"price\": 2.99, \"unit\": \"ea.\"}, {\"price\": 1.99, \"unit\": \"kg\"}]}. "
-                    "If there is no relevant information, output {\"item\": null, \"data_product_code\": null, \"prices\": []}. "
-                    "Make sure to output exactly one JSON object per item, and do not combine multiple items into one JSON."
-                )
-            }
-        ]
-    )
-
-    # Extract GPT response
-    gpt_response = response.choices[0].message.content
-    responses.append(gpt_response)
-
-    # Clean up the response to remove JSON formatting artifacts
-    cleaned_response = re.sub(r'```json|```', '', gpt_response).strip()
-
-    # Attempt to parse the JSON data
-    try:
-        extracted_info = json.loads(cleaned_response)
-        # Check if the JSON has the expected structure: "item", "data_product_code", and "prices" fields
-        if (isinstance(extracted_info, dict) and
-                "item" in extracted_info and
-                "data_product_code" in extracted_info and
-                "prices" in extracted_info):
-            price_info.append(extracted_info)
-        else:
-            print(f"Unexpected format for extracted data: {extracted_info}")
-    except json.JSONDecodeError:
-        print(f"Failed to decode JSON for response: {cleaned_response}")
-
-# Save extracted price information to price_info.json file
-if price_info:
-    with open('price_info.json', 'w', encoding='utf-8') as json_file:
-        json.dump(price_info, json_file, ensure_ascii=False, indent=4)
-    print("All items have been processed and the price information has been saved to price_info.json.")
-else:
-    print("No valid price information extracted from the data.")
-
-# Optionally, print all responses for review
-for response in responses:
-    print(response)
-
-
 # Function to remove entries with null values from price_info.json
 def clean_price_info(file_path):
     # Read the file
@@ -99,7 +27,87 @@ def clean_price_info(file_path):
     with open(file_path, 'w', encoding='utf-8') as json_file:
         json.dump(cleaned_data, json_file, ensure_ascii=False, indent=4)
     print(f"Cleaned data saved back to {file_path}.")
+    return True
 
+# 封装主要功能为函数
+def process_final_summary():
+    try:
+        # Step 1: Read item-price data from BeautifulSoup_Content.json
+        BASE_DIR = os.path.dirname(__file__)
+        data_path = os.path.join(BASE_DIR, 'BeautifulSoup_Content.json')
+        with open(data_path, 'r', encoding='utf-8') as f:
+            content_data = json.load(f)
+        # Prepare lists to store GPT responses and extracted price information
+        responses = []
+        price_info = []
 
-# Clean price_info.json by removing entries with null or empty price arrays
-clean_price_info('price_info.json')
+        # Process each item in content_data sorted by the 'Order' field
+        for item in sorted(content_data, key=lambda x: x['Order']):
+            content_text = item['Content']
+
+            # Use OpenAI API to analyze and extract text
+            response = client.chat.completions.create(
+                model=config.MODEL,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are an information extraction assistant. You are assisting with CPI calculation."
+                    },
+                    {"role": "user", "content": content_text},
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are receiving text from a JSON file that contains the names of items, their corresponding price information, "
+                            "and a data-product-code extracted from the HTML content. Some items may have multiple prices, each with a different unit of measure. "
+                            "Please extract all the price information and the data-product-code for each item. "
+                            "The output should be in JSON format with each object containing the fields \"item\", \"data_product_code\", and \"prices\", "
+                            "where \"prices\" is an array of objects, each containing \"price\" and \"unit\" fields. "
+                            "For example: {\"item\": \"cucumber\", \"data_product_code\": \"ABC123\", \"prices\": [{\"price\": 2.99, \"unit\": \"ea.\"}, {\"price\": 1.99, \"unit\": \"kg\"}]}. "
+                            "If there is no relevant information, output {\"item\": null, \"data_product_code\": null, \"prices\": []}. "
+                            "Make sure to output exactly one JSON object per item, and do not combine multiple items into one JSON."
+                        )
+                    }
+                ]
+            )
+
+            # Extract GPT response
+            gpt_response = response.choices[0].message.content
+            responses.append(gpt_response)
+
+            # Clean up the response to remove JSON formatting artifacts
+            cleaned_response = re.sub(r'```json|```', '', gpt_response).strip()
+
+            # Attempt to parse the JSON data
+            try:
+                extracted_info = json.loads(cleaned_response)
+                # Check if the JSON has the expected structure: "item", "data_product_code", and "prices" fields
+                if (isinstance(extracted_info, dict) and
+                        "item" in extracted_info and
+                        "data_product_code" in extracted_info and
+                        "prices" in extracted_info):
+                    price_info.append(extracted_info)
+                else:
+                    print(f"Unexpected format for extracted data: {extracted_info}")
+            except json.JSONDecodeError:
+                print(f"Failed to decode JSON for response: {cleaned_response}")
+
+        # Save extracted price information to price_info.json file
+        if price_info:
+            with open('price_info.json', 'w', encoding='utf-8') as json_file:
+                json.dump(price_info, json_file, ensure_ascii=False, indent=4)
+            print("All items have been processed and the price information has been saved to price_info.json.")
+            
+            # 清理数据
+            clean_price_info('price_info.json')
+            return True
+        else:
+            print("No valid price information extracted from the data.")
+            return False
+            
+    except Exception as e:
+        print(f"Error in process_final_summary: {str(e)}")
+        return False
+
+# 如果作为脚本直接执行，则调用函数
+if __name__ == "__main__":
+    process_final_summary()

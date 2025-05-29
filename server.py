@@ -13,6 +13,8 @@ import asyncio
 import os
 import config
 from extractor import ocr  # 导入OCR模块
+from extractor.Tag_Locating import process_name_tag_location, process_price_tag_location  # 导入标签定位模块
+from extractor.Final_Summary import process_final_summary  # 导入封装好的process_final_summary函数
 
 def debug(msg: str):
     # 所有调试信息都打印到 stderr，避免干扰 stdio JSON-RPC 流
@@ -244,18 +246,36 @@ async def ocr_price_tool(
 # Tool 4: 标签定位 (Tag Locating)
 # -----------------------------------
 @mcp.tool()
-async def tag_locating_tool(
-    mhtml_path: str,
+async def name_tag_locating_tool(
     *,
     ctx: Context
 ) -> dict:
-    debug(f"--> tag_locating_tool called on: {mhtml_path}")
-    await ctx.info("🏷️ Running tag locating tool")
-    try:
-        ok = await run_script(("python", "Tag_Locating_2.py", True), mhtml_path, ctx=ctx)
-    except Exception:
-        ok = await run_script(("python", "Tag_Locating.py", True), mhtml_path, ctx=ctx)
-    return {"tag_locating_ok": ok}
+    """
+    标签定位工具1：定位商品名称标签
+    """
+    debug("--> name_tag_locating_tool called")
+    await ctx.info("🏷️ 开始定位商品名称标签")
+    
+    success = await process_name_tag_location(ctx)
+    
+    await ctx.info(f"商品名称标签定位结果: {'成功' if success else '失败'}")
+    return {"success": success}
+
+@mcp.tool()
+async def price_tag_locating_tool(
+    *,
+    ctx: Context
+) -> dict:
+    """
+    标签定位工具2：定位商品价格标签
+    """
+    debug("--> price_tag_locating_tool called")
+    await ctx.info("💲 开始定位商品价格标签")
+    
+    success = await process_price_tag_location(ctx)
+    
+    await ctx.info(f"商品价格标签定位结果: {'成功' if success else '失败'}")
+    return {"success": success}
 
 # -----------------------------------
 # Tool 5: 最终摘要 (Final Summary)
@@ -267,7 +287,19 @@ async def final_summary_tool(
 ) -> dict:
     debug("--> final_summary_tool called")
     await ctx.info("📝 Running final summary tool")
-    success = await run_script(("python", "Final_Summary.py", False), None, ctx=ctx)
+    
+    # 直接调用封装好的函数，而不是运行Python脚本
+    try:
+        success = process_final_summary()
+        if success:
+            await ctx.info("✅ 最终摘要已完成，并已生成price_info.json文件")
+        else:
+            await ctx.info("❌ 最终摘要处理失败")
+    except Exception as e:
+        debug(f"Final summary processing error: {str(e)}")
+        await ctx.error(f"最终摘要处理出错: {str(e)}")
+        success = False
+    
     return {"summary_ok": success}
 
 if __name__ == "__main__":
