@@ -15,6 +15,10 @@ import config
 from extractor import ocr  # 导入OCR模块
 from extractor.Tag_Locating import process_name_tag_location, process_price_tag_location  # 导入标签定位模块
 from extractor.Final_Summary import process_final_summary  # 导入封装好的process_final_summary函数
+from extractor.css_selector_generator import process_extraction_request, process_natural_language_request  # 导入CSS选择器生成器
+from extractor.extraction_executor import execute_extraction  # 导入提取执行器
+import json
+import openai
 
 def debug(msg: str):
     # 所有调试信息都打印到 stderr，避免干扰 stdio JSON-RPC 流
@@ -301,6 +305,126 @@ async def final_summary_tool(
         success = False
     
     return {"summary_ok": success}
+
+# -----------------------------------
+# Tool 6: 智能数据提取配置工具
+# -----------------------------------
+@mcp.tool()
+async def extract_data_tool(
+    extraction_request: str,
+    *,
+    ctx: Context
+) -> dict:
+    """
+    智能数据提取配置工具：根据自然语言描述自动生成提取配置
+    
+    参数:
+        extraction_request: 自然语言形式的提取需求，如"我想提取所有商品的名称和价格"
+    
+    返回:
+        包含CSS选择器配置的字典
+    """
+    debug(f"--> extract_data_tool called with: {extraction_request}")
+    await ctx.info("🧠 开始处理提取请求...")
+    
+    try:
+        # 调用自然语言处理函数生成提取配置
+        config_result = await process_natural_language_request(extraction_request)
+        
+        if "error" in config_result:
+            await ctx.error(f"提取配置生成失败: {config_result['error']}")
+            return {"success": False, "error": config_result["error"]}
+        
+        # 获取提取配置和保存路径
+        selectors_config = config_result.get("selectors_config", {})
+        schema_path = config_result.get("schema_path", "")
+        
+        # 输出结果信息
+        await ctx.info(f"✅ 已生成提取配置")
+        await ctx.info(f"📋 网站类型: {selectors_config.get('website_type', '未指定')}")
+        await ctx.info(f"📝 描述: {selectors_config.get('description', '未提供')}")
+        
+        # 输出提取字段信息
+        fields = selectors_config.get("expected_fields", [])
+        if fields:
+            field_names = [field.get("name", "") for field in fields]
+            await ctx.info(f"🔍 提取字段: {', '.join(field_names)}")
+        
+        # 显示容器选择器信息
+        container_selector = selectors_config.get("container_selector", "")
+        if container_selector:
+            await ctx.info(f"🧩 容器选择器: {container_selector}")
+        
+        await ctx.info(f"💾 提取配置已保存至: {schema_path}")
+        
+        # 返回只包含配置的结果
+        return {
+            "success": True,
+            "selectors_config": selectors_config,
+            "schema_path": str(schema_path),
+        }
+        
+    except Exception as e:
+        debug(f"Extract data tool error: {str(e)}")
+        await ctx.error(f"提取配置生成过程出错: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+# -----------------------------------
+# Tool 7: 执行数据提取工具
+# -----------------------------------
+@mcp.tool()
+async def execute_extraction_tool(
+    selectors_config_path: str = "",
+    *,
+    ctx: Context
+) -> dict:
+    """
+    执行数据提取工具：使用生成的选择器配置从mhtml文件中提取数据
+    
+    参数:
+        selectors_config_path: 选择器配置文件路径，如果为空则使用最新的配置文件
+    
+    返回:
+        包含提取结果的字典
+    """
+    debug(f"--> execute_extraction_tool called with config path: {selectors_config_path}")
+    await ctx.info("⚙️ 开始执行数据提取...")
+    
+    try:
+        # 如果未提供配置路径，则找到最新的配置文件
+        if not selectors_config_path:
+            schemas_dir = Path("extraction_schemas")
+            if schemas_dir.exists() and schemas_dir.is_dir():
+                config_files = list(schemas_dir.glob("selector_schema_*.json"))
+                if config_files:
+                    latest_config = max(config_files, key=lambda p: p.stat().st_mtime)
+                    selectors_config_path = str(latest_config)
+                    await ctx.info(f"📄 使用最新配置文件: {latest_config.name}")
+                else:
+                    await ctx.error("❌ 未找到任何配置文件")
+                    return {"success": False, "error": "未找到配置文件"}
+            else:
+                await ctx.error("❌ 配置目录不存在")
+                return {"success": False, "error": "配置目录不存在"}
+        
+        # 获取浏览器实例
+        browser = await get_playwright_browser()
+        
+        # 调用提取执行器执行提取任务
+        # 传递info_callback和error_callback函数，这样提取执行器可以发送消息给用户
+        result = await execute_extraction(
+            browser=browser,
+            selectors_config_path=selectors_config_path,
+            info_callback=ctx.info,
+            error_callback=ctx.error
+        )
+        
+        return result
+        
+    except Exception as e:
+        debug(f"Execute extraction tool error: {str(e)}")
+        await ctx.error(f"数据提取过程出错: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
     debug("== entering mcp.run() ==")

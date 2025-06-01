@@ -18,3 +18,5 @@ extractor/item_info.json
 /public
 /.vscode
 /.idea
+/extraction_schemas
+/price_info_output
