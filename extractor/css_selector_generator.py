@@ -69,7 +69,7 @@ class CssSelectorGenerator:
         """
         # 从配置或参数获取API密钥和模型
         self.api_key = api_key or config.API_KEY
-        self.model = model or config.MODEL
+        self.model = model or config.REASONING_MODEL
         self.url = config.URL
         
         if not self.api_key:

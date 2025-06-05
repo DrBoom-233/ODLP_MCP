@@ -87,7 +87,7 @@ async def quit_playwright_browser():
 async def lifespan(app: FastMCP) -> AsyncIterator[dict]:
     # 启动时初始化所有依赖环境
     debug(">> lifespan: initializing resources")
-    get_browser()
+    # get_browser()
     await get_playwright_browser()
     yield {}
     debug(">> lifespan: cleaning up resources")
@@ -225,6 +225,11 @@ async def ocr_name_tool(
     debug("--> ocr_name_tool called")
     await ctx.info("🔢 Running OCR for Item Names")
     
+    # 清空item_info.json文件
+    item_info_path = Path("item_info.json")
+    if item_info_path.exists():
+        item_info_path.unlink()
+    
     success = await ocr.process_ocr_name(ctx)
     
     await ctx.info(f"商品名称OCR工具执行结果: {'成功' if success else '失败'}")
@@ -240,6 +245,11 @@ async def ocr_price_tool(
     """
     debug("--> ocr_price_tool called")
     await ctx.info("💲 Running OCR for Item Prices")
+
+    # 清空item_info.json文件
+    item_info_path = Path("item_info.json")
+    if item_info_path.exists():
+        item_info_path.unlink()
     
     success = await ocr.process_ocr_price(ctx)
     
@@ -259,6 +269,11 @@ async def name_tag_locating_tool(
     """
     debug("--> name_tag_locating_tool called")
     await ctx.info("🏷️ 开始定位商品名称标签")
+
+    # 清空 BeautifulSoup_Content.json文件
+    beautifulsoup_content_path = Path("BeautifulSoup_Content.json")
+    if beautifulsoup_content_path.exists():
+        beautifulsoup_content_path.unlink()
     
     success = await process_name_tag_location(ctx)
     

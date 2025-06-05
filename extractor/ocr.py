@@ -57,16 +57,32 @@ def get_image_files() -> List[Path]:
     
     return list(PUBLIC_DIR.glob("*.png")) + list(PUBLIC_DIR.glob("*.jpg")) + list(PUBLIC_DIR.glob("*.jpeg"))
 
-def setup_llm_client(api_key: str, model: str, api_base_url: Optional[str] = None):
+def setup_llm_client(api_key: str, model: str, api_base_url: Optional[str] = None, service_type: str = "openai"):
     """
     初始化LLM客户端
+    
+    Args:
+        api_key: API密钥
+        model: 模型名称
+        api_base_url: API基础URL（可选）
+        service_type: 服务类型，"openai"或"deepseek"
     """
     from openai import OpenAI
     
-    if api_base_url:
+    if service_type.lower() == "openai":
+        # 使用OpenAI的API，忽略自定义base_url
+        return OpenAI(api_key=api_key)
+    elif service_type.lower() == "deepseek":
+        # 使用DeepSeek的API，需要自定义base_url
+        if not api_base_url:
+            raise ValueError("使用DeepSeek服务需要提供API基础URL")
         return OpenAI(api_key=api_key, base_url=api_base_url)
     else:
-        return OpenAI(api_key=api_key)
+        # 默认行为保持不变
+        if api_base_url:
+            return OpenAI(api_key=api_key, base_url=api_base_url)
+        else:
+            return OpenAI(api_key=api_key)
 
 def extract_text_from_image(image_path: Path) -> str:
     """
@@ -148,9 +164,13 @@ def save_json_data(data: List[Dict[str, Any]], file_path: Path) -> bool:
     except Exception:
         return False
 
-async def process_ocr_name(ctx) -> bool:
+async def process_ocr_name(ctx, service_type: str = "openai") -> bool:
     """
     处理商品名称OCR提取流程
+    
+    Args:
+        ctx: 上下文对象
+        service_type: 服务类型，"openai"或"deepseek"
     """
     # 检查依赖和配置
     tesseract_ok, msg = setup_tesseract()
@@ -160,10 +180,20 @@ async def process_ocr_name(ctx) -> bool:
     
     await ctx.info("Tesseract OCR 已配置")
     
-    # 获取配置
-    api_key = config.API_KEY
-    model = config.MODEL or "gpt-3.5-turbo"
-    api_base_url = getattr(config, "URL", None)
+    # 根据服务类型获取配置
+    if service_type.lower() == "openai":
+        api_key = config.OPENAI_API_KEY
+        model = config.OPENAI_MODEL
+        api_base_url = None
+    elif service_type.lower() == "deepseek":
+        api_key = config.API_KEY  # DeepSeek API密钥
+        model = config.CHAT_MODEL  # DeepSeek聊天模型
+        api_base_url = config.URL  # DeepSeek API URL
+    else:
+        # 默认行为保持不变
+        api_key = config.OPENAI_API_KEY
+        model = config.OPENAI_MODEL
+        api_base_url = getattr(config, "URL", None)
     
     if not api_key:
         await ctx.error("API_KEY 未在config.py中设置或环境变量中未找到")
@@ -179,8 +209,8 @@ async def process_ocr_name(ctx) -> bool:
     
     # 初始化客户端
     try:
-        client = setup_llm_client(api_key, model, api_base_url)
-        await ctx.info(f"使用模型: {model}" + (f" 和自定义API URL: {api_base_url}" if api_base_url else ""))
+        client = setup_llm_client(api_key, model, api_base_url, service_type)
+        await ctx.info(f"使用服务: {service_type}, 模型: {model}" + (f" 和自定义API URL: {api_base_url}" if api_base_url else ""))
     except Exception as e:
         await ctx.error(f"初始化LLM客户端失败: {e}")
         return False
@@ -224,9 +254,13 @@ async def process_ocr_name(ctx) -> bool:
         await ctx.warning("没有提取到任何名称信息")
         return False
 
-async def process_ocr_price(ctx) -> bool:
+async def process_ocr_price(ctx, service_type: str = "openai") -> bool:
     """
     处理商品价格OCR提取流程
+    
+    Args:
+        ctx: 上下文对象
+        service_type: 服务类型，"openai"或"deepseek"
     """
     # 检查依赖和配置
     tesseract_ok, msg = setup_tesseract()
@@ -236,10 +270,20 @@ async def process_ocr_price(ctx) -> bool:
     
     await ctx.info("Tesseract OCR 已配置")
     
-    # 获取配置
-    api_key = config.API_KEY
-    model = config.MODEL or "gpt-3.5-turbo"
-    api_base_url = getattr(config, "URL", None)
+    # 根据服务类型获取配置
+    if service_type.lower() == "openai":
+        api_key = config.OPENAI_API_KEY
+        model = config.OPENAI_MODEL
+        api_base_url = None
+    elif service_type.lower() == "deepseek":
+        api_key = config.API_KEY  # DeepSeek API密钥
+        model = config.CHAT_MODEL  # DeepSeek聊天模型
+        api_base_url = config.URL  # DeepSeek API URL
+    else:
+        # 默认行为保持不变
+        api_key = config.OPENAI_API_KEY
+        model = config.OPENAI_MODEL
+        api_base_url = getattr(config, "URL", None)
     
     if not api_key:
         await ctx.error("API_KEY 未在config.py中设置或环境变量中未找到")
@@ -255,8 +299,8 @@ async def process_ocr_price(ctx) -> bool:
     
     # 初始化客户端
     try:
-        client = setup_llm_client(api_key, model, api_base_url)
-        await ctx.info(f"使用模型: {model}" + (f" 和自定义API URL: {api_base_url}" if api_base_url else ""))
+        client = setup_llm_client(api_key, model, api_base_url, service_type)
+        await ctx.info(f"使用服务: {service_type}, 模型: {model}" + (f" 和自定义API URL: {api_base_url}" if api_base_url else ""))
     except Exception as e:
         await ctx.error(f"初始化LLM客户端失败: {e}")
         return False
