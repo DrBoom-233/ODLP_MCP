@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "odlp_mcp": {
+      "type" : "stdio",
+      "command": "uvx",
+      "args": [
+               "run", 
+               "--with mcp",
+               "--with python-dotenv", 
+               "--with openai", 
+               "--with drissionpage", 
+               "--with beautifulsoup4", 
+               "--with playwright", 
+               "--with pytesseract",
+               "mcp",
+               "run",
+               "server.py"
+      ],
+    }
+  }
+
+}

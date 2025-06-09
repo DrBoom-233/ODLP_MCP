@@ -10,7 +10,7 @@ load_dotenv()
 
 # Initialize OpenAI client
 client = OpenAI(
-    api_key=config.API_KEY,
+    api_key=config.OPENAI_API_KEY,
     # base_url=config.URL
 )
 
@@ -43,11 +43,9 @@ def process_final_summary():
 
         # Process each item in content_data sorted by the 'Order' field
         for item in sorted(content_data, key=lambda x: x['Order']):
-            content_text = item['Content']
-
-            # Use OpenAI API to analyze and extract text
+            content_text = item['Content']            # Use OpenAI API to analyze and extract text
             response = client.chat.completions.create(
-                model=config.MODEL,
+                model=config.OPENAI_MODEL,
                 messages=[
                     {
                         "role": "system",

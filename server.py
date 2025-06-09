@@ -304,6 +304,10 @@ async def final_summary_tool(
     *,
     ctx: Context
 ) -> dict:
+    """
+    最终摘要工具，从BeautifulSoup_Content.json中提取商品名称和价格信息，并生成price_info.json
+    这个工具作为测试MCP服务用
+    """
     debug("--> final_summary_tool called")
     await ctx.info("📝 Running final summary tool")
     

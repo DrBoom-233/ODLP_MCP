@@ -18,6 +18,7 @@ import asyncio
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import logging
+import glob
 
 # 导入配置
 import config
@@ -387,12 +388,39 @@ async def process_natural_language_request(natural_language_request: str, html_c
         # 第二步：生成CSS选择器
         selectors_config = await generator.generate_css_selectors(extraction_fields)
         
-        # 生成时间戳作为文件名的一部分
-        import datetime
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 从mhtml_output目录中获取最新的mhtml文件名
+        mhtml_dir = project_root / "mhtml_output"
+        mhtml_files = list(glob.glob(str(mhtml_dir / "*.mhtml")))
+        
+        if mhtml_files:
+            # 按修改时间排序，获取最新的文件
+            latest_mhtml = max(mhtml_files, key=os.path.getmtime)
+            # 提取文件名（不含扩展名）
+            base_filename = os.path.basename(latest_mhtml).replace(".mhtml", "")
+            logger.info(f"使用mhtml文件命名格式: {base_filename}")
+        else:
+            # 如果没有mhtml文件，使用之前的命名格式
+            # 生成日期格式
+            import datetime
+            current_date = datetime.datetime.now().strftime("%Y%m%d")
+            
+            # 获取网站类型，清理格式
+            website_type = selectors_config.get("website_type", "unknown")
+            # 将空格替换为下划线，移除特殊字符
+            website_type = website_type.replace(" ", "_").replace("-", "_")
+            website_type = ''.join(c for c in website_type if c.isalnum() or c == '_')
+            
+            # 获取描述作为类别，清理格式
+            category = selectors_config.get("description", "general")
+            # 将空格替换为短横线，移除特殊字符
+            category = category.replace(" ", "-").replace("_", "-")
+            category = ''.join(c for c in category if c.isalnum() or c == '-')
+            
+            base_filename = f"{website_type}_{category}_{current_date}"
+            logger.info(f"未找到mhtml文件，使用生成的命名格式: {base_filename}")
         
         # 保存CSS选择器配置到extraction_schemas目录
-        schema_filename = f"selector_schema_{timestamp}.json"
+        schema_filename = f"{base_filename}.json"
         schema_path = SCHEMAS_DIR / schema_filename
         with open(schema_path, 'w', encoding='utf-8') as f:
             json.dump(selectors_config, f, indent=2, ensure_ascii=False)
@@ -403,7 +431,7 @@ async def process_natural_language_request(natural_language_request: str, html_c
             extraction_results = await generator.extract_with_playwright(selectors_config, html_content)
             
             # 保存提取结果到price_info_output目录
-            results_filename = f"price_info_{timestamp}.json"
+            results_filename = f"{base_filename}_results.json"
             results_path = OUTPUT_DIR / results_filename
             with open(results_path, 'w', encoding='utf-8') as f:
                 json.dump(extraction_results, f, indent=2, ensure_ascii=False)
@@ -444,12 +472,39 @@ async def process_extraction_request(extraction_fields: List[Dict[str, str]], ht
         # 生成CSS选择器
         selectors_config = await generator.generate_css_selectors(extraction_fields)
         
-        # 生成时间戳作为文件名的一部分
-        import datetime
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        # 从mhtml_output目录中获取最新的mhtml文件名
+        mhtml_dir = project_root / "mhtml_output"
+        mhtml_files = list(glob.glob(str(mhtml_dir / "*.mhtml")))
+        
+        if mhtml_files:
+            # 按修改时间排序，获取最新的文件
+            latest_mhtml = max(mhtml_files, key=os.path.getmtime)
+            # 提取文件名（不含扩展名）
+            base_filename = os.path.basename(latest_mhtml).replace(".mhtml", "")
+            logger.info(f"使用mhtml文件命名格式: {base_filename}")
+        else:
+            # 如果没有mhtml文件，使用之前的命名格式
+            # 生成日期格式
+            import datetime
+            current_date = datetime.datetime.now().strftime("%Y%m%d")
+            
+            # 获取网站类型，清理格式
+            website_type = selectors_config.get("website_type", "unknown")
+            # 将空格替换为下划线，移除特殊字符
+            website_type = website_type.replace(" ", "_").replace("-", "_")
+            website_type = ''.join(c for c in website_type if c.isalnum() or c == '_')
+            
+            # 获取描述作为类别，清理格式
+            category = selectors_config.get("description", "general")
+            # 将空格替换为短横线，移除特殊字符
+            category = category.replace(" ", "-").replace("_", "-")
+            category = ''.join(c for c in category if c.isalnum() or c == '-')
+            
+            base_filename = f"{website_type}_{category}_{current_date}"
+            logger.info(f"未找到mhtml文件，使用生成的命名格式: {base_filename}")
         
         # 保存CSS选择器配置到extraction_schemas目录
-        schema_filename = f"selector_schema_{timestamp}.json"
+        schema_filename = f"{base_filename}.json"
         schema_path = SCHEMAS_DIR / schema_filename
         with open(schema_path, 'w', encoding='utf-8') as f:
             json.dump(selectors_config, f, indent=2, ensure_ascii=False)
@@ -460,7 +515,7 @@ async def process_extraction_request(extraction_fields: List[Dict[str, str]], ht
             extraction_results = await generator.extract_with_playwright(selectors_config, html_content)
             
             # 保存提取结果到price_info_output目录
-            results_filename = f"price_info_{timestamp}.json"
+            results_filename = f"{base_filename}_results.json"
             results_path = OUTPUT_DIR / results_filename
             with open(results_path, 'w', encoding='utf-8') as f:
                 json.dump(extraction_results, f, indent=2, ensure_ascii=False)
