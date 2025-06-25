@@ -103,6 +103,8 @@ def extract_name_info(text: str, client, model: str) -> List[Dict[str, str]]:
             {"role": "system",
              "content": "Summarize the item information from the text above. "
                         "List all item names and its orders in format. "
+                        "In some cases, you might receive some information about the housing rental information,"
+                        "you should list the treat the address information as item name."
                         "Do not put any price info into json, that's not your job!"
                         "json format should be like{order:, item: }"}
         ]

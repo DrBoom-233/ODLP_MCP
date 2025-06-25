@@ -288,9 +288,15 @@ class ExtractionExecutor:
                 file_result = await self.extract_from_file(mhtml_file, selectors_config)
                 all_files_results.append(file_result)
             
-            # 生成时间戳
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            results_filename = f"extraction_results_{timestamp}.json"
+            # 使用MHTML文件名作为输出JSON名称
+            if len(mhtml_files) == 1:
+            # 如果只有一个MHTML文件，直接使用其名称
+                mhtml_name = mhtml_files[0].stem  # 获取不带扩展名的文件名
+                results_filename = f"{mhtml_name}.json"
+            else:
+            # 如果有多个MHTML文件，使用第一个文件名并添加指示
+                mhtml_name = mhtml_files[0].stem
+                results_filename = f"{mhtml_name}_and_{len(mhtml_files)-1}_more.json"
             
             # 确保输出目录存在
             output_path = Path(output_dir)
@@ -304,7 +310,6 @@ class ExtractionExecutor:
             
             # 构建最终结果对象
             final_results = {
-                "timestamp": timestamp,
                 "files_processed": len(all_files_results),
                 "total_items": total_items,
                 "results": all_files_results

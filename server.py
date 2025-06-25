@@ -112,41 +112,41 @@ mcp = FastMCP(
 # -----------------------------------
 # Tool 1: Download URL and save as MHTML
 # -----------------------------------
-@mcp.tool()
-async def download_urls_tool(
-    urls: list[str],
-    *,
-    ctx: Context
-) -> dict:
-    """
-    This is the first step for extracting process.
-    Next you need to call the Screenshot Tool.
-    Download Tool: Download the given URLs and save them as .mhtml files in the output directory.
-    """
-    debug(f"--> download_urls_tool called with: {urls}")
-    browser = get_browser()
-    saved_paths: dict[str, str] = {}
+# @mcp.tool()
+# async def download_urls_tool(
+#     urls: list[str],
+#     *,
+#     ctx: Context
+# ) -> dict:
+#     """
+#     This is the first step for extracting process.
+#     Next you need to call the Screenshot Tool.
+#     Download Tool: Download the given URLs and save them as .mhtml files in the output directory.
+#     """
+#     debug(f"--> download_urls_tool called with: {urls}")
+#     browser = get_browser()
+#     saved_paths: dict[str, str] = {}
 
-    for url in urls:
-        try:
-            debug(f"----> Downloading {url}")
-            tab = browser.new_tab()
-            tab.get(url)
-            tab.wait(CONFIG["waitTime"])
+#     for url in urls:
+#         try:
+#             debug(f"----> Downloading {url}")
+#             tab = browser.new_tab()
+#             tab.get(url)
+#             tab.wait(CONFIG["waitTime"])
 
-            filename = generate_mhtml_filename(url)
-            tab.save(path=str(OUTPUT_DIR), name=filename[:-6], as_pdf=False)
-            tab.close()
+#             filename = generate_mhtml_filename(url)
+#             tab.save(path=str(OUTPUT_DIR), name=filename[:-6], as_pdf=False)
+#             tab.close()
 
-            full_path = str(OUTPUT_DIR / filename)
-            saved_paths[url] = full_path
-            debug(f"----> Saved to {full_path}")
-        except Exception as e:
-            debug(f"!!!! download failed for {url}: {e}")
-            saved_paths[url] = f"ERROR: {e}"
+#             full_path = str(OUTPUT_DIR / filename)
+#             saved_paths[url] = full_path
+#             debug(f"----> Saved to {full_path}")
+#         except Exception as e:
+#             debug(f"!!!! download failed for {url}: {e}")
+#             saved_paths[url] = f"ERROR: {e}"
 
-    debug(f"<-- download_urls_tool result: {saved_paths}")
-    return {"mhtml_files": saved_paths}
+#     debug(f"<-- download_urls_tool result: {saved_paths}")
+#     return {"mhtml_files": saved_paths}
 
 # -----------------------------------
 # Tool 2: Screenshot
@@ -157,11 +157,23 @@ async def screenshot_tool(
     ctx: Context
 ) -> dict:
     """
-    This is the second step for extracting process,
+    This is the first step for extracting process,
     product_name_processing_tool or product_price_processing_tool should be called next.
     Screenshot Tool: Take screenshots of all downloaded .mhtml files and save them in the public directory.
     """
     await ctx.info("📸 Running screenshot tool on all .mhtml files")
+
+    # Clear previous screenshots in public directory
+    public_dir = Path(__file__).parent / "public"
+    if public_dir.exists() and public_dir.is_dir():
+        # Remove all files in the public directory
+        for file in public_dir.iterdir():
+            try:
+                file.unlink()
+                await ctx.info(f"🗑️ Removed previous screenshot: {file.name}")
+            except Exception as e:
+                await ctx.error(f"❌ Failed to remove {file.name}: {str(e)}")
+
 
     # Ensure public directory exists
     public_dir = Path(__file__).parent / "public"
@@ -231,7 +243,7 @@ async def product_name_processing_tool(
     ctx: Context
 ) -> dict:
     """
-    This is the third step for extracting process.
+    This is the second step for extracting process.
     For information extraction, it is recommended to first extract product names, if product_name_processing_tool fails,
     you can use product_price_processing_tool to extract product prices.
     This tool will help to identify the target HTML blocks, and assist with extract_data_tool later.
@@ -242,14 +254,23 @@ async def product_name_processing_tool(
     await ctx.info("🔢 Running OCR and tag locating for product names")
     
     # Clear item_info.json file if exists
-    item_info_path = Path("item_info.json")
-    if item_info_path.exists():
-        item_info_path.unlink()
+    item_info_path = Path("extractor/item_info.json")
+    try:
+        # If file exists, first try to delete it
+        if item_info_path.exists():
+            item_info_path.unlink()
+        # Create a new empty file to ensure fresh content
+        with open(item_info_path, 'w') as f:
+            pass  # Open in write mode creates an empty file
+    except Exception as e:
+        debug(f"Error clearing {item_info_path}: {e}")
     # Clear BeautifulSoup_Content.json file if exists
-    beautifulsoup_content_path = Path("BeautifulSoup_Content.json")
+    beautifulsoup_content_path = Path("extractor/BeautifulSoup_Content.json")
     if beautifulsoup_content_path.exists():
         beautifulsoup_content_path.unlink()
-        
+    with open(beautifulsoup_content_path, 'w') as f:
+        pass
+       
     # Step 1: Execute OCR for product names
     await ctx.info("📸 Step 1: Extracting product names from screenshots using OCR...")
     ocr_success = await ocr.process_ocr_name(ctx)
@@ -278,7 +299,8 @@ async def product_price_processing_tool(
     ctx: Context
 ) -> dict:
     """
-    This is the alternative third step for extracting process. If product_name_processing_tool failed, 
+    This is the alternative second step for extracting process. 
+    Only when product_name_processing_tool failed,
     you can use this tool to extract product price information.
     Next you can call extract_data_tool to get extraction schemas.
     Combined tool: Extract price information from screenshots with OCR and locate price tags
@@ -287,11 +309,11 @@ async def product_price_processing_tool(
     await ctx.info("💲 Running OCR and tag locating for prices")
 
     # Clear item_info.json file if exists
-    item_info_path = Path("item_info.json")
+    item_info_path = Path("extractor/item_info.json")
     if item_info_path.exists():
         item_info_path.unlink()
     # Clear BeautifulSoup_Content.json file if exists
-    beautifulsoup_content_path = Path("BeautifulSoup_Content.json")
+    beautifulsoup_content_path = Path("extractor/BeautifulSoup_Content.json")
     if beautifulsoup_content_path.exists():
         beautifulsoup_content_path.unlink()
     
@@ -323,7 +345,7 @@ async def extract_data_tool(
     ctx: Context
 ) -> dict:
     """
-    This is the fourth step for extracting process.
+    This is the third step for extracting process.
     Next you can call execute_extraction_tool to perform data extraction.
     Intelligent Data Extraction Configuration Tool: Automatically generate extraction configuration based on natural language description
     Receives a natural language extraction request and generates a CSS selector configuration for data extraction.
@@ -396,17 +418,35 @@ async def execute_extraction_tool(
         if not selectors_config_path:
             schemas_dir = Path("extraction_schemas")
             if schemas_dir.exists() and schemas_dir.is_dir():
-                config_files = list(schemas_dir.glob("selector_schema_*.json"))
+                # 使用更宽泛的模式查找所有JSON配置文件
+                config_files = list(schemas_dir.glob("*.json"))
+                
+                # 如果没有找到任何JSON文件，尝试查找其他目录
+                if not config_files:
+                    await ctx.info("📂 No JSON files found in extraction_schemas, trying project root...")
+                    # 添加对新的schema命名模式的支持 (www_domain_com_category_date.json)
+                    config_files = list(Path(".").glob("www_*.json"))
+                    # 保留旧的模式以兼容性
+                    config_files.extend(list(Path(".").glob("selector_*.json")))
+                    config_files.extend(list(Path(".").glob("*_schema*.json")))
+                
                 if config_files:
+                    # 添加调试信息，显示找到的所有配置文件
+                    file_names = [f.name for f in config_files]
+                    await ctx.info(f"📑 Found {len(config_files)} config files: {', '.join(file_names)}")
+                    
                     latest_config = max(config_files, key=lambda p: p.stat().st_mtime)
                     selectors_config_path = str(latest_config)
                     await ctx.info(f"📄 Using latest config file: {latest_config.name}")
                 else:
-                    await ctx.error("❌ No config files found")
+                    await ctx.error("❌ No config files found in extraction_schemas or project root")
                     return {"success": False, "error": "No config files found"}
             else:
-                await ctx.error("❌ Config directory does not exist")
-                return {"success": False, "error": "Config directory does not exist"}
+                await ctx.error("❌ Config directory does not exist, creating it...")
+                # 尝试创建目录
+                schemas_dir.mkdir(exist_ok=True)
+                return {"success": False, "error": "Config directory did not exist and was created. Please try again."}
+                
         # Get browser instance
         browser = await get_playwright_browser()
         # Call extraction executor to perform extraction task
@@ -422,8 +462,6 @@ async def execute_extraction_tool(
         debug(f"Execute extraction tool error: {str(e)}")
         await ctx.error(f"Data extraction error: {str(e)}")
         return {"success": False, "error": str(e)}
-
-
 
 if __name__ == "__main__":
     debug("== entering mcp.run() ==")

@@ -1,10 +1,6 @@
 """
-标签定位模块 - 提供从 MHTML 文件中定位商品名称和价格标签的功能。
-
-重写要点（2025‑06‑17）：
-1. **新增三段式定位策略**：模糊定位 ➜ 标签级分词 ➜ 逐词精确定位。
-2. **核心逻辑全部封装在 `get_item_paths`**，对外函数签名不变，Server 侧无需改动。
-3. 仍保留原有 BeautifulSoup Fallback，保证在极端结构下也能产出结果。
+测试程序 - Tag_Locating.py 的独立测试版本
+这个程序移除了MCP相关依赖，可以直接使用Python运行
 """
 
 from __future__ import annotations
@@ -25,7 +21,6 @@ from typing import Any, Dict, List, Optional, Union
 
 from bs4 import BeautifulSoup, Tag
 from playwright.async_api import async_playwright, Page
-from playwright.sync_api import sync_playwright  # 保留同步版接口，部分 CLI 调用仍依赖
 
 # ────────────────────────────────────────────────────────────────────────────────
 # 编码兼容：解决 Windows 下中文输出乱码
@@ -36,9 +31,10 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 # ────────────────────────────────────────────────────────────────────────────────
 # 目录常量：基于脚本位置定位项目根和 mhtml 输出目录
 # ────────────────────────────────────────────────────────────────────────────────
-THIS_DIR = Path(__file__).resolve().parent             # extractor/
-PROJECT_ROOT = THIS_DIR.parent                         # mcp‑project 根目录
-MHTML_DIR = PROJECT_ROOT / "mhtml_output"              # mhtml_output 与 extractor 同级
+THIS_DIR = Path(__file__).resolve().parent             # 项目根目录
+PROJECT_ROOT = THIS_DIR                                # 项目根目录
+MHTML_DIR = PROJECT_ROOT / "mhtml_output"              # mhtml_output
+EXTRACTOR_DIR = PROJECT_ROOT / "extractor"             # extractor
 
 # ============================================================================
 # 🔑  辅助工具
@@ -100,7 +96,7 @@ def get_item_paths(soup: BeautifulSoup, product_names: List[str]) -> Dict[str, L
             paths[get_dom_path(tag)].append(tag)
             continue  # ✅ 直接找到，跳过后续
 
-        # ——— ② 模糊定位：找相似度最高的元素作为“粗容器” ———
+        # ——— ② 模糊定位：找相似度最高的元素作为"粗容器" ———
         # 先粗暴拿所有包含单词的元素（防止全局遍历耗时）
         word_pat = re.compile(_escape_regex(raw_clean.split()[0]), re.I)
         candidates = [t for t in soup.find_all(string=word_pat) if isinstance(t, str)]
@@ -193,14 +189,24 @@ def _record_by_tokens(soup: BeautifulSoup, raw_clean: str, paths: Dict[str, List
 
 
 # ============================================================================
-#  其余原有代码基本保持 **不变**
-#  · get_mhtml_file
-#  · get_html_content
-#  · filter_paths, find_parent_with_multiple_descriptions
-#  · process_* 系列接口
+#  其他功能函数
 # ============================================================================
 
-# 以下内容从旧实现拷贝，仅删去不必要 import，逻辑保持原状。
+def filter_paths(paths: Dict[str, List[Tag]]) -> List[Tag]:
+    """筛选出现次数最多的路径对应的标签列表，随机返回至多两个。"""
+    if not paths:
+        return []
+    max_occurrence = max(len(tags) for tags in paths.values())
+    filtered = {p: tags for p, tags in paths.items() if len(tags) == max_occurrence}
+    candidate_tags = next(iter(filtered.values()), [])
+    
+    # 优先选择相邻的标签，而不是完全随机
+    if len(candidate_tags) <= 2:
+        return candidate_tags
+    
+    # 选择DOM结构上相近的标签
+    return select_nearby_tags(candidate_tags, 2)
+
 
 def select_nearby_tags(tags: List[Tag], count: int) -> List[Tag]:
     """
@@ -238,21 +244,6 @@ def select_nearby_tags(tags: List[Tag], count: int) -> List[Tag]:
     # 如果没有明显的最佳对，随机选择
     return random.sample(tags, count)
 
-def filter_paths(paths: Dict[str, List[Tag]]) -> List[Tag]:
-    """筛选出现次数最多的路径对应的标签列表，智能返回至多两个。"""
-    if not paths:
-        return []
-    max_occurrence = max(len(tags) for tags in paths.values())
-    filtered = {p: tags for p, tags in paths.items() if len(tags) == max_occurrence}
-    candidate_tags = next(iter(filtered.values()), [])
-    
-    # 优先选择相邻的标签，而不是完全随机
-    if len(candidate_tags) <= 2:
-        return candidate_tags
-    
-    # 选择DOM结构上相近的标签
-    return select_nearby_tags(candidate_tags, 2)
-
 
 def find_parent_with_multiple_descriptions(tags: List[Tag]) -> Optional[Tag]:
     """在候选标签中找到最低公共父元素，要求它的子节点中包含所有标签文本。"""
@@ -270,15 +261,7 @@ def find_parent_with_multiple_descriptions(tags: List[Tag]) -> Optional[Tag]:
             return None
 
 
-# get_mhtml_file, get_html_content, save_beautiful_soup_content, load_item_info,
-# process_tag_location, process_name_tag_location, process_price_tag_location,
-# CLI 部分均保持不变，直接从旧文件 copy 过来（略）。
-
-from typing import Tuple  # 需要在后面继续使用
-
-# —— 以下整段直接保留旧实现 ——
-
-async def get_mhtml_file(file_path: str | None = None) -> Path:
+def get_mhtml_file(file_path: str | None = None) -> Path:
     """获取要处理的 MHTML 文件"""
     if file_path:
         fp = Path(file_path)
@@ -301,12 +284,15 @@ async def get_html_content(file_path: Path) -> str:
     await playwright.stop()
     return html_content
 
-def save_beautiful_soup_content(beautiful_soup: List[Dict]) -> bool:
+
+def save_beautiful_soup_content(beautiful_soup: List[Dict], output_dir: Path = None) -> bool:
     """
     保存提取的内容到JSON文件
     """
     if beautiful_soup:
-        out_path = THIS_DIR / "BeautifulSoup_Content.json"
+        if output_dir is None:
+            output_dir = EXTRACTOR_DIR
+        out_path = output_dir / "BeautifulSoup_Content.json"
         with open(out_path, "w", encoding="utf-8") as jf:
             json.dump(beautiful_soup, jf, ensure_ascii=False, indent=4)
         print(f"已写入 JSON：{out_path}")
@@ -315,16 +301,20 @@ def save_beautiful_soup_content(beautiful_soup: List[Dict]) -> bool:
         print("公共父节点下没有有效子节点内容。")
         return False
 
-async def load_item_info(ctx, key: str = 'item') -> List[str]:
+
+def load_item_info(key: str = 'item') -> List[str]:
     """
     从item_info.json加载信息
     key可以是'item'(商品名称)或'price'(价格)
     """
     product_names = []
-    item_info_path = THIS_DIR / 'item_info.json'
+    item_info_path = PROJECT_ROOT / 'item_info.json'
     
     if not item_info_path.exists():
-        await ctx.error(f"找不到item_info.json文件")
+        item_info_path = EXTRACTOR_DIR / 'item_info.json'
+    
+    if not item_info_path.exists():
+        print(f"找不到item_info.json文件")
         return []
     
     try:
@@ -332,82 +322,53 @@ async def load_item_info(ctx, key: str = 'item') -> List[str]:
             try:
                 item_data = json.load(f)
                 product_names = [str(item.get(key, '')) for item in item_data if key in item]
-                await ctx.info(f"找到{len(product_names)}个{key}信息")
+                print(f"找到{len(product_names)}个{key}信息")
                 return product_names
             except json.JSONDecodeError as e:
-                await ctx.error(f"解析{item_info_path}失败: {str(e)}")
+                print(f"解析{item_info_path}失败: {str(e)}")
                 return []
     except Exception as e:
-        await ctx.error(f"读取{item_info_path}失败: {str(e)}")
+        print(f"读取{item_info_path}失败: {str(e)}")
         return []
+
 
 # ────────────────────────────────────────────────────────────────────────────────
 # 主流程函数
 # ────────────────────────────────────────────────────────────────────────────────
-async def process_tag_location(ctx, product_names: List[str], file_path: str | None = None) -> bool:
+
+async def process_tag_location(product_names: List[str], file_path: str | None = None) -> bool:
     """
     通用的标签定位处理流程(异步版本)
     """
     try:
         # 1. 获取MHTML文件
-        await ctx.info(f"开始处理标签定位...")
-        await ctx.info(f"工作目录: {Path.cwd()}")
-        await ctx.info(f"MHTML目录: {MHTML_DIR}")
-        
-        fp = await get_mhtml_file(file_path)
-        await ctx.info(f"处理MHTML文件: {fp}")
+        fp = get_mhtml_file(file_path)
+        print(f"处理MHTML文件: {fp}")
         
         # 2. 用Playwright加载页面获取HTML内容
-        await ctx.info("开始使用Playwright加载页面...")
         html_content = await get_html_content(fp)
-          # 3. 解析DOM，定位产品名称对应的标签路径
+        
+        # 3. 解析DOM，定位产品名称对应的标签路径
         soup = BeautifulSoup(html_content, "html.parser")
-        await ctx.info(f"成功获取 HTML 内容，长度: {len(html_content)} 字符")
-        
-        # 显示前几个商品名称用于调试
-        await ctx.info(f"处理 {len(product_names)} 个商品名称:")
-        for i, name in enumerate(product_names[:5], 1):
-            await ctx.info(f"   {i}. {name}")
-        if len(product_names) > 5:
-            await ctx.info(f"   ... 还有 {len(product_names) - 5} 个商品")
-        
         paths = get_item_paths(soup, product_names)
-        await ctx.info(f"找到的路径数量: {len(paths)}")
-        
-        # 显示详细的路径信息
-        for path, tags in paths.items():
-            await ctx.info(f"路径: {path} -> {len(tags)} 个标签")
+        print(f"找到的路径数量: {len(paths)}")
         
         # 4. 筛选出现次数最多的标签
         majority_tags = filter_paths(paths)
         if not majority_tags:
-            await ctx.warning("没有匹配到有效的标签，跳过后续处理。")
-            await ctx.warning("可能的原因：")
-            await ctx.warning("1. 商品名称与HTML中的文本不匹配")
-            await ctx.warning("2. HTML内容加载不完整")
-            await ctx.warning("3. DOM结构发生变化")
+            print("警告: 没有匹配到有效的标签，跳过后续处理。")
             return False
-        await ctx.info(f"选取了{len(majority_tags)}个标签")
-          # 5. 找最低公共父节点
-        await ctx.info(f"开始查找公共父元素，候选标签数量: {len(majority_tags)}")
-        for i, tag in enumerate(majority_tags, 1):
-            await ctx.info(f"候选标签 {i}: {tag.name} - '{tag.get_text()[:50]}...'")
+        print(f"选取了{len(majority_tags)}个标签")
         
+        # 5. 找最低公共父节点
         common_parent = find_parent_with_multiple_descriptions(majority_tags)
         if not common_parent:
-            await ctx.warning("未找到包含所有描述的公共父元素。")
-            await ctx.warning("可能的原因：")
-            await ctx.warning("1. 选中的标签彼此相距太远")
-            await ctx.warning("2. 标签不在同一个容器中")
+            print("警告: 未找到包含所有描述的公共父元素。")
             return False
         
-        await ctx.info(f"找到公共父元素: {common_parent.name}")
-        await ctx.info(f"父元素内容预览: {common_parent.get_text()[:100]}...")
-          # 6. 遍历公共父节点的子节点，提取内容并写入JSON
+        # 6. 遍历公共父节点的子节点，提取内容并写入JSON
         beautiful_soup = []
-        child_count = 0
         for idx, child in enumerate(common_parent.children, start=1):
-            child_count += 1
             if getattr(child, "prettify", None):
                 content = child.prettify().strip()
                 if content:
@@ -416,131 +377,310 @@ async def process_tag_location(ctx, product_names: List[str], file_path: str | N
                         "Content": content
                     })
         
-        await ctx.info(f"公共父元素总共有 {child_count} 个子元素")
-        await ctx.info(f"提取出 {len(beautiful_soup)} 个有效子元素")
-        
         if beautiful_soup:
-            out_path = THIS_DIR / "BeautifulSoup_Content.json"
+            out_path = EXTRACTOR_DIR / "BeautifulSoup_Content.json"
             with open(out_path, "w", encoding="utf-8") as jf:
                 json.dump(beautiful_soup, jf, ensure_ascii=False, indent=4)
-            await ctx.info(f"已写入JSON: {out_path}")
+            print(f"已写入JSON: {out_path}")
             return True
         else:
-            await ctx.warning("公共父节点下没有有效子节点内容。")
-            await ctx.warning("可能的原因：")
-            await ctx.warning("1. 公共父元素为空或只包含文本节点")
-            await ctx.warning("2. 子元素无法prettify（可能是文本节点）")
+            print("警告: 公共父节点下没有有效子节点内容。")
             return False
     
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
-        await ctx.error(f"处理标签定位时出错: {str(e)}")
-        await ctx.error(f"错误详情: {error_trace}")
+        print(f"错误: 处理标签定位时出错: {str(e)}")
+        print(f"错误详情: {error_trace}")
         return False
 
-async def process_name_tag_location(ctx, file_path: str | None = None) -> bool:
+
+async def process_name_tag_location(file_path: str | None = None) -> bool:
     """
     处理商品名称标签定位
     """
-    await ctx.info("开始处理商品名称标签定位...")
+    print("开始处理商品名称标签定位...")
     
     # 从item_info.json加载商品名称
     try:
-        product_names = await load_item_info(ctx, key='item')
+        product_names = load_item_info(key='item')
         
         if not product_names:
-            await ctx.error("未找到商品名称信息，请先运行OCR名称提取")
+            print("错误: 未找到商品名称信息，请先运行OCR名称提取")
             return False
         
         # 执行标签定位处理
         try:
-            result = await process_tag_location(ctx, product_names, file_path)
+            result = await process_tag_location(product_names, file_path)
             if result:
-                await ctx.info("商品名称标签定位处理完成")
+                print("商品名称标签定位处理完成")
             else:
-                await ctx.warning("商品名称标签定位处理失败")
+                print("商品名称标签定位处理失败")
             return result
                 
         except Exception as e:
             import traceback
             error_trace = traceback.format_exc()
-            await ctx.error(f"商品名称标签定位处理出错: {str(e)}")
-            await ctx.error(f"错误详情: {error_trace}")
+            print(f"错误: 商品名称标签定位处理出错: {str(e)}")
+            print(f"错误详情: {error_trace}")
             return False
             
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
-        await ctx.error(f"加载商品名称信息时出错: {str(e)}")
-        await ctx.error(f"错误详情: {error_trace}")
+        print(f"错误: 加载商品名称信息时出错: {str(e)}")
+        print(f"错误详情: {error_trace}")
         return False
 
-async def process_price_tag_location(ctx, file_path: str | None = None) -> bool:
+
+async def process_price_tag_location(file_path: str | None = None) -> bool:
     """
     处理商品价格标签定位
     """
-    await ctx.info("开始处理商品价格标签定位...")
+    print("开始处理商品价格标签定位...")
     
     # 从item_info.json加载价格信息
     try:
-        price_info = await load_item_info(ctx, key='price')
+        price_info = load_item_info(key='price')
         
         if not price_info:
-            await ctx.error("未找到价格信息，请先运行OCR价格提取")
+            print("错误: 未找到价格信息，请先运行OCR价格提取")
             return False
         
         # 执行标签定位处理
         try:
-            result = await process_tag_location(ctx, price_info, file_path)
+            result = await process_tag_location(price_info, file_path)
             if result:
-                await ctx.info("商品价格标签定位处理完成")
+                print("商品价格标签定位处理完成")
             else:
-                await ctx.warning("商品价格标签定位处理失败")
+                print("商品价格标签定位处理失败")
             return result
                 
         except Exception as e:
             import traceback
             error_trace = traceback.format_exc()
-            await ctx.error(f"商品价格标签定位处理出错: {str(e)}")
-            await ctx.error(f"错误详情: {error_trace}")
+            print(f"错误: 商品价格标签定位处理出错: {str(e)}")
+            print(f"错误详情: {error_trace}")
             return False
             
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
-        await ctx.error(f"加载价格信息时出错: {str(e)}")
-        await ctx.error(f"错误详情: {error_trace}")
+        print(f"错误: 加载价格信息时出错: {str(e)}")
+        print(f"错误详情: {error_trace}")
         return False
+
+
+# ────────────────────────────────────────────────────────────────────────────────
+# 测试功能
+# ────────────────────────────────────────────────────────────────────────────────
+
+async def test_with_real_data():
+    """使用真实数据测试核心功能"""
+    print("=" * 60)
+    print(f"测试模式：使用真实 MHTML 文件和 item_info.json")
+    print("=" * 60)
+    
+    # 1. 从 item_info.json 读取商品名称
+    print("1. 从 item_info.json 读取商品名称...")
+    product_names = load_item_info(key='item')
+    
+    if not product_names:
+        print("错误: 未找到商品名称信息")
+        return False
+    
+    print(f"   成功读取 {len(product_names)} 个商品名称")
+    # 显示前几个商品名称
+    for i, name in enumerate(product_names[:5], 1):
+        print(f"   {i}. {name}")
+    if len(product_names) > 5:
+        print(f"   ... 还有 {len(product_names) - 5} 个商品")
+    
+    # 2. 从 mhtml_output 读取 MHTML 文件
+    print("\n2. 从 mhtml_output 读取 MHTML 文件...")
+    try:
+        mhtml_file = get_mhtml_file()
+        print(f"   找到 MHTML 文件: {mhtml_file}")
+    except FileNotFoundError as e:
+        print(f"   错误: {e}")
+        return False
+    
+    # 3. 使用 Playwright 获取 HTML 内容
+    print("\n3. 使用 Playwright 加载页面获取 HTML 内容...")
+    try:
+        html_content = await get_html_content(mhtml_file)
+        print(f"   成功获取 HTML 内容，长度: {len(html_content)} 字符")
+    except Exception as e:
+        print(f"   错误: 获取 HTML 内容失败: {e}")
+        return False
+    
+    # 4. 解析 HTML 并执行标签匹配
+    soup = BeautifulSoup(html_content, "html.parser")    
+    # 测试核心功能
+    print("\n4. 测试 get_item_paths 函数...")
+    paths = get_item_paths(soup, product_names)
+    print(f"   找到路径数量: {len(paths)}")
+    for path, tags in paths.items():
+        print(f"   路径: {path} -> {len(tags)} 个标签")
+    
+    print("\n5. 测试 filter_paths 函数...")
+    majority_tags = filter_paths(paths)
+    print(f"   筛选出 {len(majority_tags)} 个主要标签")
+    
+    if not majority_tags:
+        print("   警告: 没有匹配到有效的标签")
+        return False
+    
+    print("\n6. 测试 find_parent_with_multiple_descriptions 函数...")
+    common_parent = find_parent_with_multiple_descriptions(majority_tags)
+    if common_parent:
+        print(f"   找到公共父元素: {common_parent.name}")
+        print(f"   父元素内容预览: {common_parent.get_text()[:100]}...")
+    else:
+        print("   未找到公共父元素")
+        return False
+    
+    print("\n7. 提取并保存内容到 test_output.json...")
+    beautiful_soup = []
+    for idx, child in enumerate(common_parent.children, start=1):
+        if getattr(child, "prettify", None):
+            content = child.prettify().strip()
+            if content:
+                beautiful_soup.append({
+                    "Order": idx,
+                    "Content": content
+                })
+    
+    print(f"   提取出 {len(beautiful_soup)} 个子元素")
+    
+    # 保存测试结果到 test_output.json
+    test_output_path = PROJECT_ROOT / "test_output.json"
+    with open(test_output_path, "w", encoding="utf-8") as f:
+        json.dump(beautiful_soup, f, ensure_ascii=False, indent=4)
+    print(f"   测试结果已保存到: {test_output_path}")
+    
+    print("\n测试完成！标签匹配成功，结果已保存到 test_output.json")
+    return True
+
+
+def test_with_sample_data():
+    """使用真实数据测试，从mhtml_output读取文件，处理item_info.json数据，输出到BeautifulSoup_Content.json"""
+    print("=" * 60)
+    print("测试模式：使用真实数据")
+    print("=" * 60)
+    
+    # 1. 从 item_info.json 读取商品名称
+    print("1. 从 item_info.json 读取商品名称...")
+    product_names = load_item_info(key='item')
+    
+    if not product_names:
+        print("错误: 未找到商品名称信息")
+        return False
+    
+    print(f"   成功读取 {len(product_names)} 个商品名称")
+    for i, name in enumerate(product_names[:3], 1):
+        print(f"   {i}. {name}")
+    if len(product_names) > 3:
+        print(f"   ... 还有 {len(product_names) - 3} 个商品")
+    
+    # 2. 从 mhtml_output 读取 MHTML 文件
+    print("\n2. 从 mhtml_output 读取 MHTML 文件...")
+    try:
+        mhtml_file = get_mhtml_file()
+        print(f"   找到 MHTML 文件: {mhtml_file}")
+    except FileNotFoundError as e:
+        print(f"   错误: {e}")
+        return False
+    
+    # 3. 使用 Playwright 获取 HTML 内容
+    print("\n3. 使用 Playwright 加载页面获取 HTML 内容...")
+    try:
+        html_content = asyncio.get_event_loop().run_until_complete(get_html_content(mhtml_file))
+        print(f"   成功获取 HTML 内容，长度: {len(html_content)} 字符")
+    except Exception as e:
+        print(f"   错误: 获取 HTML 内容失败: {e}")
+        return False
+    
+    # 4. 解析 HTML 并执行标签匹配
+    soup = BeautifulSoup(html_content, "html.parser")    
+    print("\n4. 执行标签匹配...")
+    paths = get_item_paths(soup, product_names)
+    print(f"   找到路径数量: {len(paths)}")
+    
+    # 5. 筛选出主要标签
+    majority_tags = filter_paths(paths)
+    print(f"   筛选出 {len(majority_tags)} 个主要标签")
+    
+    if not majority_tags:
+        print("   警告: 没有匹配到有效的标签")
+        return False
+    
+    # 6. 找到公共父元素
+    common_parent = find_parent_with_multiple_descriptions(majority_tags)
+    if common_parent:
+        print(f"   找到公共父元素: {common_parent.name}")
+    else:
+        print("   未找到公共父元素")
+        return False
+    
+    # 7. 提取并保存内容到 BeautifulSoup_Content.json
+    beautiful_soup = []
+    for idx, child in enumerate(common_parent.children, start=1):
+        if getattr(child, "prettify", None):
+            content = child.prettify().strip()
+            if content:
+                beautiful_soup.append({
+                    "Order": idx,
+                    "Content": content
+                })
+    
+    print(f"   提取出 {len(beautiful_soup)} 个子元素")
+    
+    # 保存到EXTRACTOR_DIR/BeautifulSoup_Content.json
+    output_path = EXTRACTOR_DIR / "BeautifulSoup_Content.json"
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(beautiful_soup, f, ensure_ascii=False, indent=4)
+    print(f"   结果已保存到: {output_path}")
+    
+    print("\n处理完成！")
+    return True
+
 
 # ────────────────────────────────────────────────────────────────────────────────
 # CLI 入口
 # ────────────────────────────────────────────────────────────────────────────────
-class CliContext:
-    """命令行工具的上下文对象，模拟MCP Context接口"""
-    async def info(self, msg):
-        print(f"[INFO] {msg}")
-    
-    async def warning(self, msg):
-        print(f"[WARNING] {msg}")
-    
-    async def error(self, msg):
-        print(f"[ERROR] {msg}")
 
 async def main_async():
-    parser = argparse.ArgumentParser(description="Tag locating tool")
-    parser.add_argument("--type", choices=["name", "price"], default="name", 
-                        help="Processing type: name (product name) or price")
+    parser = argparse.ArgumentParser(description="Tag locating test tool")
+    parser.add_argument("--type", choices=["name", "price", "test", "real"], default="real", 
+                        help="Processing type: name (product name), price, test (sample data test), or real (use real data)")
     parser.add_argument("--filepath", default=None,
                         help="Path to the MHTML file to process (optional, defaults to the latest file in mhtml_output)")
     args = parser.parse_args()
     
-    ctx = CliContext()
-    
-    if args.type == "name":
-        await process_name_tag_location(ctx, args.filepath)
+    if args.type == "test":
+        test_with_sample_data()
+    elif args.type == "real":
+        await test_with_real_data()
+    elif args.type == "name":
+        await process_name_tag_location(args.filepath)
     else:
-        await process_price_tag_location(ctx, args.filepath)
+        await process_price_tag_location(args.filepath)
+
+
+def main():
+    """同步入口函数"""
+    print("Tag Locating 测试程序")
+    print("使用方法:")
+    print("  python test_tag_locating.py --type real     # 使用真实数据测试 (默认)")
+    print("  python test_tag_locating.py --type test     # 运行示例数据测试")
+    print("  python test_tag_locating.py --type name     # 处理商品名称定位")
+    print("  python test_tag_locating.py --type price    # 处理商品价格定位")
+    print("  python test_tag_locating.py --type real --filepath path/to/file.mhtml")
+    print("")
+    
+    asyncio.run(main_async())
+
 
 if __name__ == "__main__":
-    asyncio.run(main_async())
+    main()

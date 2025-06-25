@@ -78,7 +78,7 @@ class CssSelectorGenerator:
             
         # 初始化OpenAI客户端
         self.client = openai.OpenAI(api_key=self.api_key, base_url=self.url)
-        
+
         # 指定项目路径
         self.base_path = Path(__file__).parent
         self.html_data_path = self.base_path / "BeautifulSoup_Content.json"
@@ -105,7 +105,7 @@ class CssSelectorGenerator:
             logger.error(f"加载HTML数据失败: {e}")
             raise
 
-    def sample_html_blocks(self, count: int = 3) -> List[Dict[str, Any]]:
+    def sample_html_blocks(self, count: int = 5) -> List[Dict[str, Any]]:
         """
         从HTML数据中随机抽取指定数量的HTML代码块
         
@@ -141,28 +141,28 @@ class CssSelectorGenerator:
         logger.info("将自然语言需求转换为结构化字段...")
         
         prompt = f"""
-请将以下自然语言提取需求转换为结构化的字段列表。
+    Please convert the following natural language extraction request into a structured list of fields.
 
-用户需求: {natural_language_request}
+    User request: {natural_language_request}
 
-请输出一个JSON数组，每个元素包含一个"name"字段，表示要提取的数据字段名称。
-例如，如果用户想要提取商品价格和名称，输出应该是:
-[
-  {{"name": "product_name"}},
-  {{"name": "price"}}
-]
+    Output a JSON array where each element contains a "name" field representing the name of the data field to extract.
+    For example, if the user wants to extract product prices and names, the output should be:
+    [
+      {{"name": "product_name"}},
+      {{"name": "price"}}
+    ]
 
-只需要输出JSON数组，不需要其他解释。确保每个字段名称简洁、准确，并与用户需求相关。
-"""
+    Only output the JSON array, no additional explanation is needed. Ensure each field name is concise, accurate, and relevant to the user's request.
+    """
 
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "你是一个数据提取专家，能够将自然语言需求转换为结构化的提取字段。"},
+                    {"role": "system", "content": "You are a data extraction expert capable of converting natural language requests into structured extraction fields."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.1  # 低温度以获得更确定性的回答
+                temperature=0.1  # Low temperature for more deterministic responses
             )
             
             result_text = response.choices[0].message.content
@@ -211,46 +211,46 @@ class CssSelectorGenerator:
             含有CSS选择器的字典
         """
         # 获取HTML样本
-        html_samples = self.sample_html_blocks(3)
+        html_samples = self.sample_html_blocks(5)
         
         # 构建提示
         prompt = f"""
-分析以下HTML代码，为指定的字段生成精确的CSS选择器。
+    Analyze the following HTML code and generate precise CSS selectors for the specified fields.
 
-提取字段:
-{json.dumps(extraction_fields, indent=2, ensure_ascii=False)}
+    Extraction fields:
+    {json.dumps(extraction_fields, indent=2, ensure_ascii=False)}
 
-HTML样本 (随机选择的3个):
-"""
+    HTML samples (randomly selected 5):
+    """
 
         # 添加HTML样本到提示中
         for i, sample in enumerate(html_samples):
             prompt += f"\n\nHTML样本 {i+1}:\n```html\n{sample['Content']}\n```"
             
         prompt += """
-根据上述HTML和提取字段，请生成一个包含以下信息的JSON:
-1. website_type: 网站类型描述
-2. description: 提取任务简要描述
-3. container_selector: 用于选择包含所有字段的父容器元素的CSS选择器（例如，如果要提取商品列表中的每个商品，这个选择器应该能选中单个商品项容器）
-4. expected_fields: 包含每个字段名称和对应的CSS选择器
+    Based on the above HTML and extraction fields, please generate a JSON containing the following information:
+    1. website_type: A description of the website type.
+    2. description: A brief description of the extraction task.
+    3. container_selector: A CSS selector for selecting the parent container element that contains all the fields (e.g., if extracting items from a product list, this selector should select a single product item container).
+    4. expected_fields: A list containing each field name and its corresponding CSS selector.
 
-输出格式应为:
-{
-  "website_type": "类型描述",
-  "description": "提取任务描述",
-  "container_selector": ".product-item, .item, .product, li.product, div.product, [class*='product-'], [class*='item-']",
-  "expected_fields": [
+    The output format should be:
     {
-      "name": "字段1",
-      "selector": "CSS选择器1"
-    },
-    ...
-  ]
-}
+      "website_type": "Type description",
+      "description": "Extraction task description",
+      "container_selector": ".product-item, .item, .product, li.product, div.product, [class*='product-'], [class*='item-']",
+      "expected_fields": [
+        {
+          "name": "Field1",
+          "selector": "CSS Selector1"
+        },
+        ...
+      ]
+    }
 
-container_selector字段非常重要，它应该选择包含所有需要提取字段的容器元素。这可以确保提取的数据之间保持正确的关联关系（如商品名称和价格匹配）。
-为每个字段提供尽可能准确的CSS选择器，确保可以通过Playwright提取到相应内容。
-"""
+    The container_selector field is very important. It should select the container element that includes all the fields to be extracted. This ensures that the extracted data maintains the correct relationships (e.g., matching product names with prices).
+    Provide the most accurate CSS selector possible for each field to ensure that the corresponding content can be extracted using Playwright.
+    """
 
         # 调用OpenAI API
         try:
@@ -258,10 +258,10 @@ container_selector字段非常重要，它应该选择包含所有需要提取�
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "你是一个专业的网页数据提取专家，精通HTML分析和CSS选择器编写。"},
+                    {"role": "system", "content": "You are a professional web data extraction expert, proficient in HTML analysis and CSS selector creation."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2  # 低温度以获得更确定性的回答
+                temperature=0.2  # Low temperature for more deterministic responses
             )
             
             # 提取回答文本
@@ -456,14 +456,14 @@ async def process_natural_language_request(natural_language_request: str, html_c
 # 保持向后兼容的接口
 async def process_extraction_request(extraction_fields: List[Dict[str, str]], html_content: Optional[str] = None) -> Dict[str, Any]:
     """
-    处理结构化提取请求的主函数（向后兼容）
+    Main function to handle structured extraction requests (backward compatible).
     
-    参数:
-        extraction_fields: 需要提取的字段列表 
-        html_content: 可选的HTML内容，如果不提供则使用生成的CSS选择器
+    Parameters:
+        extraction_fields: List of fields to extract.
+        html_content: Optional HTML content. If not provided, only the generated CSS selectors will be used.
         
-    返回:
-        处理结果
+    Returns:
+        Processing results.
     """
     try:
         # 创建选择器生成器
@@ -537,25 +537,23 @@ async def process_extraction_request(extraction_fields: List[Dict[str, str]], ht
         logger.error(f"处理提取请求失败: {e}")
         return {"error": str(e)}
 
-async def main():
-    """主函数，用于测试"""
-    # 测试自然语言请求
-    natural_request = "我想要提取所有商品的名称、价格和单位"
+# async def main():
+#     """主函数，用于测试"""
+  
+#     print("测试自然语言请求处理：")
+#     result = await process_natural_language_request(natural_request)
+#     print(json.dumps(result, indent=2, ensure_ascii=False))
     
-    print("测试自然语言请求处理：")
-    result = await process_natural_language_request(natural_request)
-    print(json.dumps(result, indent=2, ensure_ascii=False))
+#     # 也可以测试结构化字段请求（向后兼容）
+#     test_fields = [
+#         {"name": "product_name"},
+#         {"name": "price"},
+#         {"name": "unit"}
+#     ]
     
-    # 也可以测试结构化字段请求（向后兼容）
-    test_fields = [
-        {"name": "product_name"},
-        {"name": "price"},
-        {"name": "unit"}
-    ]
-    
-    print("\n测试结构化字段请求处理（向后兼容）：")
-    result2 = await process_extraction_request(test_fields)
-    print(json.dumps(result2, indent=2, ensure_ascii=False))
+#     print("\n测试结构化字段请求处理（向后兼容）：")
+#     result2 = await process_extraction_request(test_fields)
+#     print(json.dumps(result2, indent=2, ensure_ascii=False))
 
-if __name__ == "__main__":
-    asyncio.run(main()) 
+# if __name__ == "__main__":
+#     asyncio.run(main()) 
