@@ -208,17 +208,19 @@ class ExtractionExecutor:
                             try:
                                 # 在容器内查找元素
                                 sub_elem = await element.query_selector(field_selector)
-                                
                                 if sub_elem:
-                                    # 提取文本内容
-                                    text = await sub_elem.text_content()
-                                    if text:
-                                        item_data[field_name] = text.strip()
-                                    else:
-                                        item_data[field_name] = ""
-                                else:
-                                    item_data[field_name] = ""
+                                    raw = await sub_elem.text_content()
+                                    text = raw.strip() if raw and raw.strip() else None
+
+                                    # 2) 如果文本是空，再试 aria-label 属性
+                                    if not text:
+                                        raw_attr = await sub_elem.get_attribute("aria-label")
+                                        text = raw_attr.strip() if raw_attr and raw_attr.strip() else None
                                     
+                                    # 3) 最终赋值（都没有时设为 ""）
+                                    item_data[field_name] = text or ""
+                                else:
+                                    item_data[field_name] = ""                                   
                             except Exception as e:
                                 self.error_callback(f"❌ 容器 #{idx+1} 中提取字段 '{field_name}' 失败: {str(e)}")
                                 item_data[field_name] = ""

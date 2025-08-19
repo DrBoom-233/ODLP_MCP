@@ -69,15 +69,16 @@ class CssSelectorGenerator:
             model: LLM模型名称，如果为None则从环境变量获取
         """
         # 从配置或参数获取API密钥和模型
-        self.api_key = api_key or config.API_KEY
-        self.model = model or config.REASONING_MODEL
+        self.api_key = api_key or config.OPENAI_API_KEY_FOR_REASONING
+        self.model = model or config.OPENAI_REASONING_MODEL
         self.url = config.URL
         
         if not self.api_key:
             raise ValueError("请提供OpenAI API密钥或设置OPENAI_API_KEY环境变量")
             
         # 初始化OpenAI客户端
-        self.client = openai.OpenAI(api_key=self.api_key, base_url=self.url)
+        # self.client = openai.OpenAI(api_key=self.api_key, base_url=self.url)
+        self.client = openai.OpenAI(api_key=self.api_key)
 
         # 指定项目路径
         self.base_path = Path(__file__).parent
@@ -162,7 +163,7 @@ class CssSelectorGenerator:
                     {"role": "system", "content": "You are a data extraction expert capable of converting natural language requests into structured extraction fields."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.1  # Low temperature for more deterministic responses
+                # temperature=0.1  # Low temperature for more deterministic responses
             )
             
             result_text = response.choices[0].message.content
@@ -250,6 +251,7 @@ class CssSelectorGenerator:
 
     The container_selector field is very important. It should select the container element that includes all the fields to be extracted. This ensures that the extracted data maintains the correct relationships (e.g., matching product names with prices).
     Provide the most accurate CSS selector possible for each field to ensure that the corresponding content can be extracted using Playwright.
+    Be aware, in some cases, there are multiple types of fields under the same category, such as "initial price" and "current price". In this case, you should provide two selectors to extract both types of prices without user's prompting.
     """
 
         # 调用OpenAI API
@@ -261,7 +263,7 @@ class CssSelectorGenerator:
                     {"role": "system", "content": "You are a professional web data extraction expert, proficient in HTML analysis and CSS selector creation."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2  # Low temperature for more deterministic responses
+                # temperature=0.2  # Low temperature for more deterministic responses
             )
             
             # 提取回答文本

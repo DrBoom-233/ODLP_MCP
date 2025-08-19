@@ -392,9 +392,15 @@ async def load_item_info(ctx, key: str = 'item') -> List[str]:
 # ────────────────────────────────────────────────────────────────────────────────
 # 主流程函数
 # ────────────────────────────────────────────────────────────────────────────────
-async def process_tag_location(ctx, product_names: List[str], file_path: str | None = None) -> bool:
+async def process_tag_location(ctx, product_names: List[str], file_path: str | None = None, data_field: str = 'item') -> bool:
     """
     通用的标签定位处理流程(异步版本)
+    
+    Args:
+        ctx: 上下文对象
+        product_names: 产品名称列表（如果提供则直接使用，否则从JSON加载）
+        file_path: MHTML文件路径
+        data_field: 要从JSON加载的字段名，可以是 'item', 'price' 等
     """
     try:
         # 1. 获取MHTML文件
@@ -411,86 +417,67 @@ async def process_tag_location(ctx, product_names: List[str], file_path: str | N
         soup = BeautifulSoup(html_content, "html.parser")
         await ctx.info(f"成功获取 HTML 内容，长度: {len(html_content)} 字符")
         
-        # 3. 从item_info.json加载所有item
-        all_items = []
-        item_info_path = THIS_DIR / 'item_info.json'
-        if item_info_path.exists():
-            with open(item_info_path, 'r', encoding='utf-8') as f:
-                try:
-                    item_data = json.load(f)
-                    all_items = [str(item.get('item', '')) for item in item_data if 'item' in item and item.get('item')]
-                except json.JSONDecodeError:
-                    await ctx.warning("解析item_info.json失败")
+        # 3. 如果没有提供product_names，则从item_info.json加载指定字段
+        all_items = product_names if product_names else []
+        
+        if not all_items:
+            item_info_path = THIS_DIR / 'item_info.json'
+            if item_info_path.exists():
+                with open(item_info_path, 'r', encoding='utf-8') as f:
+                    try:
+                        item_data = json.load(f)
+                        # 修改这里：使用传入的data_field参数
+                        all_items = [str(item.get(data_field, '')) for item in item_data if data_field in item and item.get(data_field)]
+                        await ctx.info(f"从item_info.json加载了{len(all_items)}个{data_field}字段的数据")
+                    except json.JSONDecodeError:
+                        await ctx.warning("解析item_info.json失败")
+            else:
+                await ctx.error(f"未提供数据且找不到item_info.json文件")
+                return False
         
         # 确保有足够的item
         if len(all_items) < 2:
-            await ctx.warning(f"item_info.json中只有{len(all_items)}个有效item，至少需要2个")
+            await ctx.warning(f"只有{len(all_items)}个有效的{data_field}数据，至少需要2个")
             if not all_items:
                 return False
         
-        await ctx.info(f"从item_info.json加载了{len(all_items)}个item")
+        await ctx.info(f"将处理{len(all_items)}个{data_field}数据: {all_items[:5]}{'...' if len(all_items) > 5 else ''}")
         
-        # 4. 对所有item进行分词
-        tokenized_items = [_tokenize(item) for item in all_items]
+        # ================== 新增：先尝试精确匹配 ==================
+        await ctx.info("\n第一步：尝试精确匹配...")
+        exact_match_tags = []
         
-        # 找出最短的分词长度，确保位置对应
-        min_token_length = min(len(tokens) for tokens in tokenized_items)
-        await ctx.info(f"最短分词长度: {min_token_length}")
-        
-        # 5. 按位置尝试匹配，寻找DOM路径相似的标签
-        best_position = None
-        best_position_tags = []
-        best_similarity_score = 0.0
-        
-        for pos in range(min_token_length):
-            # 获取当前位置的所有分词
-            current_tokens = [item_tokens[pos] for item_tokens in tokenized_items]
-            await ctx.info(f"\n尝试位置{pos+1}的分词: {', '.join(current_tokens[:5])}{'...' if len(current_tokens) > 5 else ''}")
-            
-            # 查找匹配标签
-            position_tags = []
-            for i, token in enumerate(current_tokens):
-                tag = soup.find(lambda t: t.string and token.lower() in t.string.lower())
-                if tag:
-                    position_tags.append(tag)
-            
-            await ctx.info(f"  位置{pos+1}找到{len(position_tags)}/{len(current_tokens)}个匹配标签")
-            
-            # 只有找到足够多的标签才进行DOM路径比较
-            if len(position_tags) >= 2:
-                # 计算DOM路径的相似度
-                dom_paths = [get_dom_path(tag) for tag in position_tags]
+        # 对每个item尝试精确匹配
+        for item in all_items:
+            # 1. 首先尝试 string 精确匹配 (最严格，要求只有一个文本节点)
+            exact_tag = soup.find(lambda t: t.string and t.string.strip().lower() == item.lower())
+            if exact_tag:
+                exact_match_tags.append(exact_tag)
+                await ctx.info(f"  ✓ string精确匹配成功: '{item}' -> <{exact_tag.name}>")
+                continue
                 
-                # 计算平均相似度
-                path_similarities = []
-                for i in range(len(dom_paths)):
-                    for j in range(i+1, len(dom_paths)):
-                        similarity = _similar_ratio(dom_paths[i], dom_paths[j])
-                        path_similarities.append(similarity)
-                
-                avg_similarity = sum(path_similarities) / len(path_similarities) if path_similarities else 0
-                await ctx.info(f"  DOM路径平均相似度: {avg_similarity:.4f}")
-                
-                # 记录最佳位置
-                if avg_similarity > best_similarity_score:
-                    best_similarity_score = avg_similarity
-                    best_position = pos
-                    best_position_tags = position_tags
-                    await ctx.info(f"  ✓ 更新最佳位置为位置{pos+1}，相似度{avg_similarity:.4f}")
+            # 2. 然后尝试 get_text() 精确匹配 (处理有子元素的标签)
+            exact_tag = soup.find(lambda t: t.get_text().strip().lower() == item.lower())
+            if exact_tag:
+                exact_match_tags.append(exact_tag)
+                await ctx.info(f"  ✓ get_text精确匹配成功: '{item}' -> <{exact_tag.name}>")
+                continue
+            
+            # 3. 最后尝试部分匹配 (最宽松)
+            partial_tag = soup.find(lambda t: t.get_text() and item.lower() in t.get_text().strip().lower())
+            if partial_tag:
+                exact_match_tags.append(partial_tag)
+                await ctx.info(f"  ✓ 部分匹配成功: '{item}' 在 <{partial_tag.name}> 中")
         
-        # 6. 如果找到了最佳位置，使用该位置的标签
-        if best_position is not None and best_similarity_score > 0.6:  # 设置一个相似度阈值
-            await ctx.info(f"\n使用最佳位置{best_position+1}的标签，DOM路径相似度: {best_similarity_score:.4f}")
-            # 显示找到的标签
-            for i, tag in enumerate(best_position_tags[:5]):
-                await ctx.info(f"  标签{i+1}: <{tag.name}> - {tag.get_text().strip()[:50]}")
-                await ctx.info(f"  DOM路径: {get_dom_path(tag)}")
+        # 如果精确匹配找到了足够的标签，直接使用
+        if len(exact_match_tags) >= 2:
+            await ctx.info(f"\n精确匹配成功找到 {len(exact_match_tags)} 个标签，跳过分词步骤")
             
             # 只随机选择最多两个标签参与最小公共父元素查找
-            selected_tags = best_position_tags
-            if len(best_position_tags) > 2:
-                selected_tags = random.sample(best_position_tags, 2)
-                await ctx.info(f"\n从 {len(best_position_tags)} 个标签中随机选择 2 个用于查找公共父元素")
+            selected_tags = exact_match_tags
+            if len(exact_match_tags) > 2:
+                selected_tags = random.sample(exact_match_tags, 2)
+                await ctx.info(f"从 {len(exact_match_tags)} 个精确匹配标签中随机选择 2 个用于查找公共父元素")
             
             # 保留输入标签信息的调试输出
             await ctx.info(f"\n===== 开始查找 {len(selected_tags)} 个标签的最低公共父元素 =====")
@@ -502,50 +489,137 @@ async def process_tag_location(ctx, product_names: List[str], file_path: str | N
             common_parent = _lowest_common_parent(selected_tags)
             
             if not common_parent:
-                await ctx.warning("未找到包含所有标签的公共父元素")
-                return False
-                
-            await ctx.info(f"找到最小公共父元素: <{common_parent.name}>")
-            
-            # 如果公共父元素是head或body，直接报错而不是使用备选
-            if common_parent.name in ['head', 'body', 'html']:
-                await ctx.error(f"公共父元素是 <{common_parent.name}>，匹配结果太大，定位失败")
-                return False
+                await ctx.warning("未找到包含所有标签的公共父元素，尝试使用分词方法")
+            elif common_parent.name in ['head', 'body', 'html']:
+                await ctx.warning(f"精确匹配的公共父元素是 <{common_parent.name}>，结果太大，尝试使用分词方法")
+            else:
+                await ctx.info(f"精确匹配成功找到合适的公共父元素: <{common_parent.name}>")
+                # 跳转到处理公共父元素部分，不再执行分词
+                goto_process_common_parent = True
         else:
-            await ctx.warning("未找到DOM路径相似度足够高的位置")
-            # 使用传统方法
-            await ctx.info("退回到传统方法，使用所有分词进行匹配")
-            
-            # 使用get_item_paths函数处理前几个商品名称
-            sample_names = all_items[:3] if len(all_items) >= 3 else all_items
-            paths = get_item_paths(soup, sample_names)
-            await ctx.info(f"找到的匹配项数量: {len(paths)}")
-            
-            # 筛选出现次数最多的标签
-            majority_tags = filter_paths(paths)
-            if not majority_tags:
-                await ctx.warning("没有匹配到有效的标签，跳过后续处理。")
-                return False
-            
-            await ctx.info(f"选取了{len(majority_tags)}个最佳匹配标签")
-            
-            # 只随机选择最多两个标签参与最小公共父元素查找
-            selected_tags = majority_tags
-            if len(majority_tags) > 2:
-                selected_tags = random.sample(majority_tags, 2)
-                await ctx.info(f"从 {len(majority_tags)} 个标签中随机选择 2 个用于查找公共父元素")
-            
-            # 找最低公共父节点
-            common_parent = find_parent_with_multiple_descriptions(selected_tags)
-            if not common_parent:
-                await ctx.warning("未找到包含所有描述的公共父元素。")
-                return False
-
-            # 如果公共父元素是head或body，直接报错
-            if common_parent.name in ['head', 'body', 'html']:
-                await ctx.error(f"公共父元素是 <{common_parent.name}>，匹配结果太大，定位失败")
-                return False
+            await ctx.info(f"精确匹配只找到 {len(exact_match_tags)} 个标签，不够用，继续尝试分词匹配")
+            goto_process_common_parent = False
         
+        # ================== 如果精确匹配失败，再尝试分词匹配 ==================
+        if not goto_process_common_parent:
+            await ctx.info("\n第二步：尝试分词匹配...")
+            # 4. 对所有item进行分词
+            tokenized_items = [_tokenize(item) for item in all_items]
+            
+            # 找出最短的分词长度，确保位置对应
+            min_token_length = min(len(tokens) for tokens in tokenized_items)
+            await ctx.info(f"最短分词长度: {min_token_length}")
+            
+            # 5. 按位置尝试匹配，寻找DOM路径相似的标签
+            best_position = None
+            best_position_tags = []
+            best_similarity_score = 0.0
+            
+            for pos in range(min_token_length):
+                # 获取当前位置的所有分词
+                current_tokens = [item_tokens[pos] for item_tokens in tokenized_items]
+                await ctx.info(f"\n尝试位置{pos+1}的分词: {', '.join(current_tokens[:5])}{'...' if len(current_tokens) > 5 else ''}")
+                
+                # 查找匹配标签
+                position_tags = []
+                for i, token in enumerate(current_tokens):
+                    tag = soup.find(lambda t: t.string and token.lower() in t.string.lower())
+                    if tag:
+                        position_tags.append(tag)
+                
+                await ctx.info(f"  位置{pos+1}找到{len(position_tags)}/{len(current_tokens)}个匹配标签")
+                
+                # 只有找到足够多的标签才进行DOM路径比较
+                if len(position_tags) >= 2:
+                    # 计算DOM路径的相似度
+                    dom_paths = [get_dom_path(tag) for tag in position_tags]
+                    
+                    # 计算平均相似度
+                    path_similarities = []
+                    for i in range(len(dom_paths)):
+                        for j in range(i+1, len(dom_paths)):
+                            similarity = _similar_ratio(dom_paths[i], dom_paths[j])
+                            path_similarities.append(similarity)
+                    
+                    avg_similarity = sum(path_similarities) / len(path_similarities) if path_similarities else 0
+                    await ctx.info(f"  DOM路径平均相似度: {avg_similarity:.4f}")
+                    
+                    # 记录最佳位置
+                    if avg_similarity > best_similarity_score:
+                        best_similarity_score = avg_similarity
+                        best_position = pos
+                        best_position_tags = position_tags
+                        await ctx.info(f"  ✓ 更新最佳位置为位置{pos+1}，相似度{avg_similarity:.4f}")
+            
+            # 6. 如果找到了最佳位置，使用该位置的标签
+            if best_position is not None and best_similarity_score > 0.6:  # 设置一个相似度阈值
+                await ctx.info(f"\n使用最佳位置{best_position+1}的标签，DOM路径相似度: {best_similarity_score:.4f}")
+                # 显示找到的标签
+                for i, tag in enumerate(best_position_tags[:5]):
+                    await ctx.info(f"  标签{i+1}: <{tag.name}> - {tag.get_text().strip()[:50]}")
+                    await ctx.info(f"  DOM路径: {get_dom_path(tag)}")
+                
+                # 只随机选择最多两个标签参与最小公共父元素查找
+                selected_tags = best_position_tags
+                if len(best_position_tags) > 2:
+                    selected_tags = random.sample(best_position_tags, 2)
+                    await ctx.info(f"\n从 {len(best_position_tags)} 个标签中随机选择 2 个用于查找公共父元素")
+                
+                # 保留输入标签信息的调试输出
+                await ctx.info(f"\n===== 开始查找 {len(selected_tags)} 个标签的最低公共父元素 =====")
+                for i, tag in enumerate(selected_tags, 1):
+                    await ctx.info(f"输入标签 {i}: <{tag.name}> - 文本: {tag.get_text().strip()[:50]}")
+                    await ctx.info(f"  DOM路径: {get_dom_path(tag)}")
+                    
+                # 寻找这些标签的最小公共父元素
+                common_parent = _lowest_common_parent(selected_tags)
+                
+                if not common_parent:
+                    await ctx.warning("未找到包含所有标签的公共父元素")
+                    return False
+                
+                await ctx.info(f"找到最小公共父元素: <{common_parent.name}>")
+                
+                # 如果公共父元素是head或body，直接报错而不是使用备选
+                if common_parent.name in ['head', 'body', 'html']:
+                    await ctx.error(f"公共父元素是 <{common_parent.name}>，匹配结果太大，定位失败")
+                    return False
+            else:
+                await ctx.warning("未找到DOM路径相似度足够高的位置")
+                # 使用传统方法
+                await ctx.info("退回到传统方法，使用所有分词进行匹配")
+                
+                # 使用get_item_paths函数处理前几个商品名称
+                sample_names = all_items[:3] if len(all_items) >= 3 else all_items
+                paths = get_item_paths(soup, sample_names)
+                await ctx.info(f"找到的匹配项数量: {len(paths)}")
+                
+                # 筛选出现次数最多的标签
+                majority_tags = filter_paths(paths)
+                if not majority_tags:
+                    await ctx.warning("没有匹配到有效的标签，跳过后续处理。")
+                    return False
+                
+                await ctx.info(f"选取了{len(majority_tags)}个最佳匹配标签")
+                
+                # 只随机选择最多两个标签参与最小公共父元素查找
+                selected_tags = majority_tags
+                if len(majority_tags) > 2:
+                    selected_tags = random.sample(majority_tags, 2)
+                    await ctx.info(f"从 {len(majority_tags)} 个标签中随机选择 2 个用于查找公共父元素")
+                
+                # 找最低公共父节点
+                common_parent = find_parent_with_multiple_descriptions(selected_tags)
+                if not common_parent:
+                    await ctx.warning("未找到包含所有描述的公共父元素。")
+                    return False
+
+                # 如果公共父元素是head或body，直接报错
+                if common_parent.name in ['head', 'body', 'html']:
+                    await ctx.error(f"公共父元素是 <{common_parent.name}>，匹配结果太大，定位失败")
+                    return False
+        
+        # ================== 处理找到的公共父元素 ==================
         await ctx.info(f"\n最终使用的父元素: <{common_parent.name}> - 内容预览: {common_parent.get_text().strip()[:100]}...")
         
         # 7. 遍历公共父节点的子节点，提取内容并写入JSON
@@ -592,32 +666,31 @@ async def process_name_tag_location(ctx, file_path: str | None = None) -> bool:
     
     # 从item_info.json加载商品名称
     try:
+        # 尝试先加载item字段，如果没有则尝试其他可能的字段
         product_names = await load_item_info(ctx, key='item')
         
         if not product_names:
-            await ctx.error("未找到商品名称信息，请先运行OCR名称提取")
-            return False
-        
-        # 执行标签定位处理
-        try:
-            result = await process_tag_location(ctx, product_names, file_path)
-            if result:
-                await ctx.info("商品名称标签定位处理完成")
-            else:
-                await ctx.warning("商品名称标签定位处理失败")
-            return result
-                
-        except Exception as e:
-            import traceback
-            error_trace = traceback.format_exc()
-            await ctx.error(f"商品名称标签定位处理出错: {str(e)}")
-            await ctx.error(f"错误详情: {error_trace}")
-            return False
+            # 如果没有item字段，尝试使用price字段作为替代
+            await ctx.warning("未找到item字段，尝试使用price字段")
+            product_names = await load_item_info(ctx, key='price')
             
+            if not product_names:
+                await ctx.error("未找到item或price字段信息")
+                return False
+        
+        # 执行标签定位处理，传入数据类型
+        field_type = 'item' if 'item' in str(product_names[0]) else 'price'
+        result = await process_tag_location(ctx, product_names, file_path, data_field=field_type)
+        if result:
+            await ctx.info("商品名称标签定位处理完成")
+        else:
+            await ctx.warning("商品名称标签定位处理失败")
+        return result
+                
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
-        await ctx.error(f"加载商品名称信息时出错: {str(e)}")
+        await ctx.error(f"商品名称标签定位处理出错: {str(e)}")
         await ctx.error(f"错误详情: {error_trace}")
         return False
 
@@ -632,29 +705,21 @@ async def process_price_tag_location(ctx, file_path: str | None = None) -> bool:
         price_info = await load_item_info(ctx, key='price')
         
         if not price_info:
-            await ctx.error("未找到价格信息，请先运行OCR价格提取")
+            await ctx.error("未找到price字段信息")
             return False
         
         # 执行标签定位处理
-        try:
-            result = await process_tag_location(ctx, price_info, file_path)
-            if result:
-                await ctx.info("商品价格标签定位处理完成")
-            else:
-                await ctx.warning("商品价格标签定位处理失败")
-            return result
+        result = await process_tag_location(ctx, price_info, file_path, data_field='price')
+        if result:
+            await ctx.info("商品价格标签定位处理完成")
+        else:
+            await ctx.warning("商品价格标签定位处理失败")
+        return result
                 
-        except Exception as e:
-            import traceback
-            error_trace = traceback.format_exc()
-            await ctx.error(f"商品价格标签定位处理出错: {str(e)}")
-            await ctx.error(f"错误详情: {error_trace}")
-            return False
-            
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
-        await ctx.error(f"加载价格信息时出错: {str(e)}")
+        await ctx.error(f"商品价格标签定位处理出错: {str(e)}")
         await ctx.error(f"错误详情: {error_trace}")
         return False
 
