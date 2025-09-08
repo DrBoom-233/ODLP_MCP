@@ -1,5 +1,5 @@
 """
-OCR工具模块 - 提供商品名称和价格提取功能
+OCR Tool Module - Provides functionality for extracting product names and prices
 """
 import os
 import re
@@ -10,26 +10,26 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
 import config
 
-# 路径常量
+# Path constants
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 EXTRACTOR_DIR = PROJECT_ROOT / "extractor"
 PUBLIC_DIR = PROJECT_ROOT / "public"
 
-# 输出文件路径
+# Output file paths
 ITEM_INFO_PATH = EXTRACTOR_DIR / "item_info.json"
 PRICE_INFO_PATH = EXTRACTOR_DIR / "price_info.json"
 
 def setup_tesseract() -> Tuple[bool, str]:
     """
-    设置Tesseract OCR路径
-    返回: (成功状态, 信息消息)
+    Set up Tesseract OCR path
+    Returns: (Success status, Information message)
     """
-    # 检查环境变量
+    # Check environment variables
     if 'TESSERACT_CMD' in os.environ:
         pytesseract.pytesseract.tesseract_cmd = os.environ['TESSERACT_CMD']
-        return True, f"从环境变量使用Tesseract路径: {os.environ['TESSERACT_CMD']}"
+        return True, f"Using Tesseract path from environment variable: {os.environ['TESSERACT_CMD']}"
     
-    # 尝试常见路径（Windows系统）
+    # Try common paths (Windows systems)
     if os.name == 'nt':
         tesseract_paths = [
             r'C:\Program Files\Tesseract-OCR\tesseract.exe',
@@ -39,18 +39,18 @@ def setup_tesseract() -> Tuple[bool, str]:
         for path in tesseract_paths:
             if os.path.exists(path):
                 pytesseract.pytesseract.tesseract_cmd = path
-                return True, f"使用Tesseract路径: {path}"
+                return True, f"Using Tesseract path: {path}"
     
-    # 测试是否可用（可能已在PATH中）
+    # Test if available (might already be in PATH)
     try:
         pytesseract.get_tesseract_version()
-        return True, "Tesseract OCR 已配置可用"
+        return True, "Tesseract OCR is configured and available"
     except Exception as e:
-        return False, f"未找到Tesseract OCR: {e}"
+        return False, f"Tesseract OCR not found: {e}"
 
 def get_image_files() -> List[Path]:
     """
-    获取public目录中的所有图片文件
+    Get all image files in the public directory
     """
     if not PUBLIC_DIR.exists():
         PUBLIC_DIR.mkdir(exist_ok=True)
@@ -59,26 +59,26 @@ def get_image_files() -> List[Path]:
 
 def setup_llm_client(api_key: str, model: str, api_base_url: Optional[str] = None, service_type: str = "openai"):
     """
-    初始化LLM客户端
+    Initialize the LLM client
     
     Args:
-        api_key: API密钥
-        model: 模型名称
-        api_base_url: API基础URL（可选）
-        service_type: 服务类型，"openai"或"deepseek"
+        api_key: API key
+        model: Model name
+        api_base_url: API base URL (optional)
+        service_type: Service type, "openai" or "deepseek"
     """
     from openai import OpenAI
     
     if service_type.lower() == "openai":
-        # 使用OpenAI的API，忽略自定义base_url
+        # Use OpenAI's API, ignore custom base_url
         return OpenAI(api_key=api_key)
     elif service_type.lower() == "deepseek":
-        # 使用DeepSeek的API，需要自定义base_url
+        # Use DeepSeek's API, requires custom base_url
         if not api_base_url:
-            raise ValueError("使用DeepSeek服务需要提供API基础URL")
+            raise ValueError("Using DeepSeek service requires providing an API base URL")
         return OpenAI(api_key=api_key, base_url=api_base_url)
     else:
-        # 默认行为保持不变
+        # Default behavior remains unchanged
         if api_base_url:
             return OpenAI(api_key=api_key, base_url=api_base_url)
         else:
@@ -86,14 +86,14 @@ def setup_llm_client(api_key: str, model: str, api_base_url: Optional[str] = Non
 
 def extract_text_from_image(image_path: Path) -> str:
     """
-    使用OCR从图片中提取文本
+    Extract text from an image using OCR
     """
     image = Image.open(image_path)
     return pytesseract.image_to_string(image, lang='eng')
 
 def extract_name_info(text: str, client, model: str) -> List[Dict[str, str]]:
     """
-    从文本中提取商品名称信息
+    Extract product name information from text
     """
     response = client.chat.completions.create(
         model=model,
@@ -126,7 +126,7 @@ def extract_name_info(text: str, client, model: str) -> List[Dict[str, str]]:
 
 def extract_price_info(text: str, client, model: str) -> List[Dict[str, str]]:
     """
-    从文本中提取价格信息
+    Extract price information from text
     """
     response = client.chat.completions.create(
         model=model,
@@ -157,7 +157,7 @@ def extract_price_info(text: str, client, model: str) -> List[Dict[str, str]]:
 
 def save_json_data(data: List[Dict[str, Any]], file_path: Path) -> bool:
     """
-    保存数据到JSON文件
+    Save data to a JSON file
     """
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -168,203 +168,203 @@ def save_json_data(data: List[Dict[str, Any]], file_path: Path) -> bool:
 
 async def process_ocr_name(ctx, service_type: str = "openai") -> bool:
     """
-    处理商品名称OCR提取流程
+    Process the OCR extraction workflow for product names
     
     Args:
-        ctx: 上下文对象
-        service_type: 服务类型，"openai"或"deepseek"
+        ctx: Context object
+        service_type: Service type, "openai" or "deepseek"
     """
-    # 检查依赖和配置
+    # Check dependencies and configuration
     tesseract_ok, msg = setup_tesseract()
     if not tesseract_ok:
         await ctx.error(msg)
         return False
     
-    await ctx.info("Tesseract OCR 已配置")
+    await ctx.info("Tesseract OCR is configured")
     
-    # 根据服务类型获取配置
+    # Get configuration based on service type
     if service_type.lower() == "openai":
         api_key = config.OPENAI_API_KEY
         model = config.OPENAI_MODEL
         api_base_url = None
     elif service_type.lower() == "deepseek":
-        api_key = config.API_KEY  # DeepSeek API密钥
-        model = config.CHAT_MODEL  # DeepSeek聊天模型
+        api_key = config.API_KEY  # DeepSeek API key
+        model = config.CHAT_MODEL  # DeepSeek chat model
         api_base_url = config.URL  # DeepSeek API URL
     else:
-        # 默认行为保持不变
+        # Default behavior remains unchanged
         api_key = config.OPENAI_API_KEY
         model = config.OPENAI_MODEL
         api_base_url = getattr(config, "URL", None)
     
     if not api_key:
-        await ctx.error("API_KEY 未在config.py中设置或环境变量中未找到")
+        await ctx.error("API_KEY is not set in config.py or not found in environment variables")
         return False
     
-    # 获取图片文件
+    # Get image files
     image_files = get_image_files()
-    await ctx.info(f"找到 {len(image_files)} 个图片文件")
+    await ctx.info(f"Found {len(image_files)} image files")
     
     if not image_files:
-        await ctx.error("没有找到任何图片文件")
+        await ctx.error("No image files found")
         return False
     
-    # 初始化客户端
+    # Initialize client
     try:
         client = setup_llm_client(api_key, model, api_base_url, service_type)
-        await ctx.info(f"使用服务: {service_type}, 模型: {model}" + (f" 和自定义API URL: {api_base_url}" if api_base_url else ""))
+        await ctx.info(f"Using service: {service_type}, model: {model}" + (f" and custom API URL: {api_base_url}" if api_base_url else ""))
     except Exception as e:
-        await ctx.error(f"初始化LLM客户端失败: {e}")
+        await ctx.error(f"Failed to initialize LLM client: {e}")
         return False
     
-    # 处理所有图片
+    # Process all images
     item_name_info = []
     
     for path in image_files:
         try:
-            await ctx.info(f"\n处理图片: {path.name}")
+            await ctx.info(f"\nProcessing image: {path.name}")
             
-            # OCR文本提取
+            # OCR text extraction
             text = extract_text_from_image(path)
-            await ctx.info(f"提取的文本长度: {len(text)}")
+            await ctx.info(f"Extracted text length: {len(text)}")
             
-            # 处理名称信息
-            await ctx.info("调用LLM分析商品名称...")
+            # Process name information
+            await ctx.info("Calling LLM to analyze product names...")
             name_info = extract_name_info(text, client, model)
             
             if name_info:
                 item_name_info.extend(name_info)
-                await ctx.info(f"提取了 {len(name_info)} 条名称信息")
+                await ctx.info(f"Extracted {len(name_info)} name information entries")
             else:
-                await ctx.warning(f"从 {path.name} 中未提取到名称信息")
+                await ctx.warning(f"No name information extracted from {path.name}")
                 
         except Exception as e:
             import traceback
-            await ctx.error(f"处理图片 {path.name} 失败: {e}")
+            await ctx.error(f"Failed to process image {path.name}: {e}")
             await ctx.error(traceback.format_exc())
             continue
     
-    # 保存结果
+    # Save results
     if item_name_info:
         if save_json_data(item_name_info, ITEM_INFO_PATH):
-            await ctx.info(f"名称信息已保存到 {ITEM_INFO_PATH}")
+            await ctx.info(f"Name information saved to {ITEM_INFO_PATH}")
             return True
         else:
-            await ctx.error(f"保存名称信息失败")
+            await ctx.error("Failed to save name information")
             return False
     else:
-        await ctx.warning("没有提取到任何名称信息")
+        await ctx.warning("No name information extracted")
         return False
 
 async def process_ocr_price(ctx, service_type: str = "openai") -> bool:
     """
-    处理商品价格OCR提取流程
+    Process the OCR extraction workflow for product prices
     
     Args:
-        ctx: 上下文对象
-        service_type: 服务类型，"openai"或"deepseek"
+        ctx: Context object
+        service_type: Service type, "openai" or "deepseek"
     """
-    # 检查依赖和配置
+    # Check dependencies and configuration
     tesseract_ok, msg = setup_tesseract()
     if not tesseract_ok:
         await ctx.error(msg)
         return False
     
-    await ctx.info("Tesseract OCR 已配置")
+    await ctx.info("Tesseract OCR is configured")
     
-    # 根据服务类型获取配置
+    # Get configuration based on service type
     if service_type.lower() == "openai":
         api_key = config.OPENAI_API_KEY
         model = config.OPENAI_MODEL
         api_base_url = None
     elif service_type.lower() == "deepseek":
-        api_key = config.API_KEY  # DeepSeek API密钥
-        model = config.CHAT_MODEL  # DeepSeek聊天模型
+        api_key = config.API_KEY  # DeepSeek API key
+        model = config.CHAT_MODEL  # DeepSeek chat model
         api_base_url = config.URL  # DeepSeek API URL
     else:
-        # 默认行为保持不变
+        # Default behavior remains unchanged
         api_key = config.OPENAI_API_KEY
         model = config.OPENAI_MODEL
         api_base_url = getattr(config, "URL", None)
     
     if not api_key:
-        await ctx.error("API_KEY 未在config.py中设置或环境变量中未找到")
+        await ctx.error("API_KEY is not set in config.py or not found in environment variables")
         return False
     
-    # 获取图片文件
+    # Get image files
     image_files = get_image_files()
-    await ctx.info(f"找到 {len(image_files)} 个图片文件")
+    await ctx.info(f"Found {len(image_files)} image files")
     
     if not image_files:
-        await ctx.error("没有找到任何图片文件")
+        await ctx.error("No image files found")
         return False
     
-    # 初始化客户端
+    # Initialize client
     try:
         client = setup_llm_client(api_key, model, api_base_url, service_type)
-        await ctx.info(f"使用服务: {service_type}, 模型: {model}" + (f" 和自定义API URL: {api_base_url}" if api_base_url else ""))
+        await ctx.info(f"Using service: {service_type}, model: {model}" + (f" and custom API URL: {api_base_url}" if api_base_url else ""))
     except Exception as e:
-        await ctx.error(f"初始化LLM客户端失败: {e}")
+        await ctx.error(f"Failed to initialize LLM client: {e}")
         return False
     
-    # 处理所有图片
+    # Process all images
     item_price_info = []
     
     for path in image_files:
         try:
-            await ctx.info(f"\n处理图片: {path.name}")
+            await ctx.info(f"\nProcessing image: {path.name}")
             
-            # OCR文本提取
+            # OCR text extraction
             text = extract_text_from_image(path)
-            await ctx.info(f"提取的文本长度: {len(text)}")
+            await ctx.info(f"Extracted text length: {len(text)}")
             
-            # 处理价格信息
-            await ctx.info("调用LLM分析价格信息...")
+            # Process price information
+            await ctx.info("Calling LLM to analyze price information...")
             price_info = extract_price_info(text, client, model)
             
             if price_info:
                 item_price_info.extend(price_info)
-                await ctx.info(f"提取了 {len(price_info)} 条价格信息")
+                await ctx.info(f"Extracted {len(price_info)} price information entries")
             else:
-                await ctx.warning(f"从 {path.name} 中未提取到价格信息")
+                await ctx.warning(f"No price information extracted from {path.name}")
                 
         except Exception as e:
             import traceback
-            await ctx.error(f"处理图片 {path.name} 失败: {e}")
+            await ctx.error(f"Failed to process image {path.name}: {e}")
             await ctx.error(traceback.format_exc())
             continue
     
-    # 保存结果：仅保存到 item_info.json
+    # Save results: Only save to item_info.json
     if item_price_info:
         try:
-            # 如果item_info.json已存在，尝试读取并添加价格信息
+            # If item_info.json exists, try to read and add price information
             if ITEM_INFO_PATH.exists():
                 try:
                     with open(ITEM_INFO_PATH, 'r', encoding='utf-8') as f:
                         existing_data = json.load(f)
                         if isinstance(existing_data, list):
-                            # 直接将价格信息添加到已有的商品信息中
+                            # Directly add price information to existing product information
                             existing_data.extend(item_price_info)
                             if save_json_data(existing_data, ITEM_INFO_PATH):
-                                await ctx.info(f"价格信息已添加到 {ITEM_INFO_PATH}")
+                                await ctx.info(f"Price information added to {ITEM_INFO_PATH}")
                                 return True
                             else:
-                                await ctx.error(f"更新 {ITEM_INFO_PATH} 失败")
+                                await ctx.error(f"Failed to update {ITEM_INFO_PATH}")
                                 return False
                 except Exception as e:
-                    await ctx.error(f"读取或更新 {ITEM_INFO_PATH} 失败: {e}")
-                    # 如果读取失败，尝试直接写入新文件
+                    await ctx.error(f"Failed to read or update {ITEM_INFO_PATH}: {e}")
+                    # If reading fails, try to write directly to a new file
             
-            # 如果文件不存在或读取失败，直接保存价格信息
+            # If the file does not exist or reading fails, directly save price information
             if save_json_data(item_price_info, ITEM_INFO_PATH):
-                await ctx.info(f"价格信息已保存到 {ITEM_INFO_PATH}")
+                await ctx.info(f"Price information saved to {ITEM_INFO_PATH}")
                 return True
             else:
-                await ctx.error(f"保存价格信息失败")
+                await ctx.error("Failed to save price information")
                 return False
         except Exception as e:
-            await ctx.error(f"保存到 {ITEM_INFO_PATH} 过程中出错: {e}")
+            await ctx.error(f"Error occurred while saving to {ITEM_INFO_PATH}: {e}")
             return False
     else:
-        await ctx.warning("没有提取到任何价格信息")
-        return False 
+        await ctx.warning("No price information extracted")
+        return False

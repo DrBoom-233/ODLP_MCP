@@ -29,7 +29,7 @@ def clean_price_info(file_path):
     print(f"Cleaned data saved back to {file_path}.")
     return True
 
-# 封装主要功能为函数
+# Encapsulate main functionality into a function
 def process_final_summary():
     try:
         # Step 1: Read item-price data from BeautifulSoup_Content.json
@@ -94,8 +94,8 @@ def process_final_summary():
             with open('price_info.json', 'w', encoding='utf-8') as json_file:
                 json.dump(price_info, json_file, ensure_ascii=False, indent=4)
             print("All items have been processed and the price information has been saved to price_info.json.")
-            
-            # 清理数据
+
+            # Cleaning data
             clean_price_info('price_info.json')
             return True
         else:
@@ -106,6 +106,6 @@ def process_final_summary():
         print(f"Error in process_final_summary: {str(e)}")
         return False
 
-# 如果作为脚本直接执行，则调用函数
+
 if __name__ == "__main__":
     process_final_summary()

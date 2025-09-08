@@ -1,10 +1,10 @@
 """
 DrissionPage_Downloader.py
 -------------------------
-• 输出目录统一到 *项目根/mhtml_output/*，与 pipeline.py 保持一致。
-• 支持两种调用方式：
-  1) CLI 传 `--urls ...`（与之前兼容）
-  2) 若 CLI 不传任何 URL，则使用脚本顶部 `DEFAULT_URLS` 进行快速测试；要停用只需把列表留空或注释掉。
+• Output directory unified to *project_root/mhtml_output/*, consistent with pipeline.py.
+• Supports two invocation methods:
+  1) CLI passes `--urls ...` (compatible with previous versions)
+  2) If no URL is passed via CLI, the `DEFAULT_URLS` at the top of the script is used for quick testing; to disable, leave the list empty or comment it out.
 """
 
 from __future__ import annotations
@@ -19,29 +19,29 @@ from urllib.parse import urlparse
 from DrissionPage import Chromium, ChromiumOptions  # type: ignore
 
 # --------------------------------------------------------
-# **硬编码测试列表**：开发自测时使用。正式运行可留空或注释
+# **Hardcoded test list**: Used for development self-testing. Leave empty or comment out for official runs.
 # --------------------------------------------------------
 DEFAULT_URLS: list[str] = [
      # "https://www.foodbasics.ca/aisles/fruits-vegetables/fruits",
 ]
 
 # --------------------------------------------------------
-# 路径常量：输出目录固定在项目根的 mhtml_output/
+# Path constants: Output directory fixed at project root's mhtml_output/
 # --------------------------------------------------------
 ROOT_DIR   = Path(__file__).resolve().parent.parent     # mcp-project/
 OUTPUT_DIR = ROOT_DIR / "mhtml_output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 CONFIG = {
-    "waitTime": 3,   # 页面加载等待秒数
+    "waitTime": 3,   # Page load wait time in seconds
 }
 
 # --------------------------------------------------------
-# 工具函数
+# Utility functions
 # --------------------------------------------------------
 
 def generate_mhtml_filename(url: str) -> str:
-    """根据 URL 生成文件名：host_最后路径片段_日期.mhtml"""
+    """Generate a filename based on the URL: host_last_path_segment_date.mhtml"""
     parsed = urlparse(url)
     host = parsed.hostname.replace(".", "_") if parsed.hostname else "unknown"
     last_seg = Path(parsed.path).name or "no_category"
@@ -65,7 +65,7 @@ def download_single(url: str) -> None:
 
 
 # --------------------------------------------------------
-# CLI 入口
+# CLI entry point
 # --------------------------------------------------------
 
 def parse_cli() -> list[str]:

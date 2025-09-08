@@ -7,6 +7,10 @@ from pathlib import Path
 import json
 import traceback
 
+"""
+This file is not longer used in the main workflow. Please ignore it.
+"""
+
 # 打印系统信息用于调试
 print(f"Python version: {sys.version}")
 print(f"Current working directory: {os.getcwd()}")

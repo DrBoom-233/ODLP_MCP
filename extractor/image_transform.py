@@ -7,6 +7,9 @@ from pathlib import Path
 import json
 import config
 
+"""
+This file is not longer used in the main workflow. Please ignore it.
+"""
 
 # Initialize OpenAI client
 client = OpenAI(
