@@ -5,12 +5,15 @@
 ---
 
 ✨ Highlights
-- Adapts to many e-commerce layouts and page structures
+- Adapts to many e-commerce layouts and page structures.
 - Extracts fields like product name, price, size, color, country/region, etc.
 - No hardcoded rules, just describe your needs in natural language.
 ---
+✨ Difference between ODLP_MCP and crawl4ai (https://github.com/unclecode/crawl4ai):
+- ODLP_MCP focuses on e-commerce product data extraction, while crawl4ai is a general web scraping framework. ODLP_MCP is designed for robust price data extraction across diverse e-commerce sites.
+---
 
-How it works
+✨ How it works
 - Describe your extraction needs in natural language (e.g., “Extract product title, current price, available sizes, shipping country, and return JSON”).
 - The LLM plans steps, generates CSS/XPath selectors, and performs extraction automatically.
 
