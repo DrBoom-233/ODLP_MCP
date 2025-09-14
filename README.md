@@ -1,10 +1,30 @@
-# ODLP MCP
+# 🚀 ODLP MCP
 
-This MCP service uses a large language model (LLM) to extract price information from e-commerce websites.
+> A lightweight MCP service that uses a large language model (LLM) to extract price and product information from e‑commerce pages.
 
-## Environment Setup
+---
 
-The project manages Python dependencies with [uv](https://github.com/astral-sh/uv). To set up the environment:
+✨ Highlights
+- Adapts to many e-commerce layouts and page structures
+- Extracts fields like product name, price, size, color, country/region, etc.
+- No hardcoded rules, just describe your needs in natural language.
+---
+
+How it works
+- Describe your extraction needs in natural language (e.g., “Extract product title, current price, available sizes, shipping country, and return JSON”).
+- The LLM plans steps, generates CSS/XPath selectors, and performs extraction automatically.
+
+---
+
+## 🔧 Before You Start
+- Save a page as MHTML: in your browser use "Save as" → "Webpage, Single File (*.mhtml)". To ensure extraction success, please go to **category specific grid-style product listing pages**, where the DOM Tree traversing algorithm can work. Example url like: `https://www.metro.ca/en/online-grocery/aisles/fruits-vegetables`. Not like `https://www.amazon.ca/`.
+- Obtain an LLM API key (e.g., OpenAI). Recommended: one general model (e.g., `gpt-4o-mini`) and one reasoning model (e.g., `o4-mini`).
+
+---
+
+## 🛠 Environment Setup
+
+The project manages Python dependencies with [uv](https://github.com/astral-sh/uv).
 
 ```bash
 # install uv
@@ -18,9 +38,11 @@ source .venv/bin/activate
 uv sync
 ```
 
-## API Key Configuration
+---
 
-`config.py` reads API keys and model names from environment variables. Create a `.env` file in the project root and add entries such as:
+## 🔑 API Key Configuration
+
+`config.py` reads API keys and model names from environment variables. Create a `.env` file in the project root:
 
 ```
 OPENAI_API_KEY=your_openai_key
@@ -28,23 +50,24 @@ OPENAI_MODEL=gpt-4o-mini
 OPENAI_REASONING_MODEL=o4-mini
 ```
 
-Use a general model (e.g., `OPENAI_MODEL`) to extract key elements and a reasoning model (e.g., `OPENAI_REASONING_MODEL`) to generate CSS selectors.
+Use `OPENAI_MODEL` for general extraction and `OPENAI_REASONING_MODEL` for selector/reasoning tasks.
 
-## Model and Service Customization
+---
 
-OpenAI is used by default. To switch to another provider (e.g., DeepSeek), update the API calls in `config.py`, `extractor/ocr.py`, and `extractor/css_selector_generator.py`, and supply the corresponding API key in `.env`. The OCR module can change services via the `service_type` parameter of `process_ocr_price`.
+## 🔁 Model & Service Customization
 
-## Run the Service
+OpenAI is the default. To switch providers (e.g., DeepSeek), update API calls in:
+- `config.py`
+- `extractor/ocr.py`
+- `extractor/css_selector_generator.py`
 
-After configuration, start the MCP server with:
+OCR service can be changed via the `service_type` parameter of `process_ocr_price`.
 
-```bash
-uv run python server.py
-```
+---
 
-## Connect to MCP Clients
+## 🔌 Connect to MCP Clients
 
-To connect this server to an MCP-compatible client, follow the guidelines in the [VS Code Copilot MCP documentation](https://code.visualstudio.com/docs/copilot/customization/mcp-servers) and create an `MCP.json` file containing:
+Create an `MCP.json` to register this server with an MCP-compatible client:
 
 ```json
 {
@@ -71,5 +94,8 @@ To connect this server to an MCP-compatible client, follow the guidelines in the
 }
 ```
 
-Replace `/absolute/path/to/server.py` with the path to `server.py` on your machine.
+Replace `/absolute/path/to/server.py` with the absolute path to `server.py` on your machine.
 
+---
+
+⭐ From my side I use GitHub Copilot in VS Code as the client. Tutorial website: https://code.visualstudio.com/docs/copilot/customization/mcp-servers; you may use other MCP-compatible clients (Claude Code, Gemini CLI, etc.).
